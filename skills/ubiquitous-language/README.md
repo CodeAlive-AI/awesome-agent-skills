@@ -8,6 +8,16 @@ Maintain a project thesaurus (domain glossary) following DDD ubiquitous language
 npx skills add CodeAlive-AI/awesome-agent-skills@ubiquitous-language -g -y
 ```
 
+## Quick start
+
+After installing, try these in your project:
+
+```
+> Create a domain thesaurus for this project
+> What should I call the entity that tracks user payments?
+> Audit naming consistency in this codebase
+```
+
 ## What it does
 
 Three modes:
