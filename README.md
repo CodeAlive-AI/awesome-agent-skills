@@ -11,6 +11,7 @@ These skills are **not tied to CodeAlive** — they work with any agent that sup
 | Skill | Description | Install |
 |-------|-------------|---------|
 | [agents-consilium](skills/agents-consilium/) | Multi-agent orchestration — query Codex CLI and Gemini CLI for independent expert opinions | `npx skills add CodeAlive-AI/awesome-agent-skills@agents-consilium -g -y` |
+| [ubiquitous-language](skills/ubiquitous-language/) | Domain thesaurus manager — DDD naming consistency, thesaurus generation, naming audit | `npx skills add CodeAlive-AI/awesome-agent-skills@ubiquitous-language -g -y` |
 
 ## Contributing
 
