@@ -1,0 +1,49 @@
+{
+  "_comment": "Example consilium config. Copy over config.json (or point CONSILIUM_CONFIG at this file) and edit. JSON does not support comments in-place, hence this _comment field (ignored by the loader).",
+  "agents": {
+    "codex": {
+      "enabled": true,
+      "backend": "codex-cli",
+      "model": "gpt-5.4",
+      "role": "analyst",
+      "label": "Codex"
+    },
+    "gemini-cli": {
+      "enabled": false,
+      "backend": "gemini-cli",
+      "model": "gemini-3.1-pro-preview",
+      "role": "lateral",
+      "label": "Gemini"
+    },
+    "opencode-zen": {
+      "enabled": true,
+      "backend": "opencode",
+      "model": "opencode/gemini-3.1-pro",
+      "effort": "high",
+      "role": "lateral",
+      "label": "OpenCode (Zen)"
+    },
+    "opencode-google-direct": {
+      "enabled": false,
+      "backend": "opencode",
+      "model": "google/gemini-3.1-pro-preview",
+      "effort": "max",
+      "role": "lateral",
+      "label": "OpenCode (Google)"
+    },
+    "claude-opus": {
+      "enabled": false,
+      "backend": "claude-code",
+      "model": "opus",
+      "role": "analyst",
+      "label": "Claude Opus"
+    },
+    "claude-sonnet-lateral": {
+      "enabled": false,
+      "backend": "claude-code",
+      "model": "sonnet",
+      "role": "lateral",
+      "label": "Claude Sonnet (Lateral)"
+    }
+  }
+}

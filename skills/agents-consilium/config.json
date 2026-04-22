@@ -1,0 +1,33 @@
+{
+  "agents": {
+    "codex": {
+      "enabled": true,
+      "backend": "codex-cli",
+      "model": "gpt-5.4",
+      "role": "analyst",
+      "label": "Codex"
+    },
+    "gemini-cli": {
+      "enabled": false,
+      "backend": "gemini-cli",
+      "model": "gemini-3.1-pro-preview",
+      "role": "lateral",
+      "label": "Gemini"
+    },
+    "opencode": {
+      "enabled": true,
+      "backend": "opencode",
+      "model": "opencode/gemini-3.1-pro",
+      "effort": "high",
+      "role": "lateral",
+      "label": "OpenCode"
+    },
+    "claude-code": {
+      "enabled": false,
+      "backend": "claude-code",
+      "model": "opus",
+      "role": "analyst",
+      "label": "ClaudeCode"
+    }
+  }
+}

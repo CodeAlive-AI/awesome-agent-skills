@@ -23,6 +23,38 @@ fi
 # Default timeout
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-1200}"
 
+# Shared exit codes — agent-consumers can branch on these.
+EXIT_OK=0                  # everything succeeded (or agent was disabled/skipped cleanly)
+EXIT_GENERIC=1             # reserved: legacy / unclassified failure
+EXIT_PARTIAL=2             # consensus: some agents failed, some succeeded
+EXIT_ALL_FAILED=3          # consensus: every queried agent failed
+EXIT_CONFIG_ERROR=4        # missing CLI, missing/invalid config, unknown role/id
+EXIT_USAGE=5               # bad CLI args: missing prompt, unknown flag
+
+# XML-escape stdin → stdout (&, <, >, ", ').
+xml_escape() {
+    python3 -c '
+import sys
+data = sys.stdin.read()
+print(data
+    .replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+    .replace("\"", "&quot;")
+    .replace("\x27", "&apos;"), end="")
+'
+}
+
+# Wrap arbitrary text as a CDATA section, handling the `]]>` escape.
+# Reads from stdin, writes to stdout.
+cdata_wrap() {
+    local content
+    content="$(cat)"
+    # split any literal `]]>` so it cannot close our CDATA
+    content="${content//]]>/]]]]><![CDATA[>}"
+    printf '<![CDATA[%s]]>' "$content"
+}
+
 # Shared principles for all consilium agents — intellectual independence & anti-bias
 CONSILIUM_PRINCIPLES="[CONSILIUM — INDEPENDENT ADVISORY MODE]
 
@@ -64,29 +96,97 @@ Skip this section only if the query is purely analytical (no decision involved).
 Your top recommendation with reasoning. Include confidence level (high/medium/low) and what would change your mind.
 '
 
-# Role-specific prompts — these go BETWEEN the principles and the user question
-CODEX_ROLE="YOUR ROLE: Rigorous Analyst.
+# Role prompts — each goes BETWEEN principles and the user question.
+# To add a new role: define *_ROLE_PROMPT below and add it to CONSILIUM_ROLE_MAP.
+
+ANALYST_ROLE_PROMPT="YOUR ROLE: Rigorous Analyst.
 You excel at precision: code correctness, edge cases, implementation depth, performance implications, security surface.
 Go deep. Find what others miss in the details. Question whether the proposed approach actually works at the implementation level.
 If you see a subtle bug, race condition, or architectural flaw — that's exactly what you're here for.
 "
 
-GEMINI_ROLE="YOUR ROLE: Lateral Thinker.
+LATERAL_ROLE_PROMPT="YOUR ROLE: Lateral Thinker.
 You excel at breadth: cross-domain patterns, creative alternatives, questioning premises, seeing the bigger picture.
 Step back. Ask whether the right problem is being solved. Draw analogies from other domains.
 If everyone is debating option A vs option B, maybe the real answer is option C from a completely different domain. That's your kind of insight.
 "
 
-# Build prompt: principles + role + output template + user prompt + optional context
+# --- Code-review specializations ---
+
+SECURITY_ROLE_PROMPT="YOUR ROLE: Security Specialist for code review.
+Scope: concretely exploitable issues — injection (SQL/command/template), auth/authz flaws, secret leakage, unsafe deserialization, input validation gaps, crypto misuse, SSRF, path traversal, unsafe defaults, TOCTOU races. Ignore pure logic/perf/style (another specialist handles those).
+
+MANDATORY workflow per candidate finding (hypothesis-validation pattern):
+1. Draft a hypothesis about the defect — do NOT emit it yet.
+2. Validate via the tools you have in this working directory:
+   - Path-feasibility: use Grep/Glob to trace whether untrusted input actually reaches the sink. A finding where the path is not reachable from user-controlled input is a false positive — drop it.
+   - Check callers: is the function only called from trusted contexts (tests, internal boot code)? If yes, drop or demote severity.
+   - Check project rules: consult CLAUDE.md / AGENTS.md / README / SECURITY.md before flagging — the project may intentionally allow the pattern.
+3. Emit the finding ONLY if validation confirmed it. For each emitted finding, include one reason it might still be a false positive (helps the caller triage).
+"
+
+CORRECTNESS_ROLE_PROMPT="YOUR ROLE: Correctness/Logic Specialist for code review.
+Scope: wrong logic, off-by-one, null/undefined access, unchecked Option/Result/error paths, race conditions, resource leaks, API misuse, edge cases. Ignore security and cosmetic nits.
+
+MANDATORY workflow per candidate finding (hypothesis-validation pattern):
+1. Draft a hypothesis: under what concrete input does the code misbehave?
+2. Validate via the tools you have in this working directory:
+   - Check callers: Grep for call sites. Is the offending input actually reachable from them, or is it prevented upstream?
+   - Read tests if present: does an existing test already cover this path? If yes with a passing case, your hypothesis may be wrong — drop it.
+   - Consult CLAUDE.md / AGENTS.md / README — the project may have documented the invariant you think is missing.
+3. Emit the finding ONLY if validation holds. Include one reason it might still be a false positive.
+"
+
+# Data-driven role table: "<role-id>|<prompt-var-name>" per line.
+CONSILIUM_ROLE_MAP="analyst|ANALYST_ROLE_PROMPT
+lateral|LATERAL_ROLE_PROMPT
+security|SECURITY_ROLE_PROMPT
+correctness|CORRECTNESS_ROLE_PROMPT"
+
+# Legacy aliases kept for backward compatibility with external scripts or overrides.
+CODEX_ROLE="$ANALYST_ROLE_PROMPT"
+GEMINI_ROLE="$LATERAL_ROLE_PROMPT"
+
+# Resolve a role id to its prompt text.
+# Prints prompt on stdout, exits non-zero if unknown.
+get_role_prompt() {
+    local role_id="$1"
+    local line var
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if [[ "${line%%|*}" == "$role_id" ]]; then
+            var="${line##*|}"
+            printf '%s' "${!var}"
+            return 0
+        fi
+    done <<< "$CONSILIUM_ROLE_MAP"
+    return 1
+}
+
+# Print the list of known role ids, one per line.
+list_roles() {
+    local line
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        echo "${line%%|*}"
+    done <<< "$CONSILIUM_ROLE_MAP"
+}
+
+# Build prompt: principles + role + output template + user prompt + optional context.
 # Usage: build_prompt "role_text" "$PROMPT" "$CONTEXT_FILE"
+# Set CONSILIUM_SKIP_OUTPUT_TEMPLATE=1 to omit the default Assessment/Findings
+# template — used by code-review mode which provides its own XML schema.
 build_prompt() {
     local role="$1"
     local prompt="$2"
     local context_file="${3:-}"
 
+    local template="$OUTPUT_TEMPLATE"
+    [[ -n "${CONSILIUM_SKIP_OUTPUT_TEMPLATE:-}" ]] && template=""
+
     local full="${CONSILIUM_PRINCIPLES}
 ${role}
-${OUTPUT_TEMPLATE}
+${template}
 ---
 
 ${prompt}"
