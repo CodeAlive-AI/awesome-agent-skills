@@ -12,6 +12,7 @@ These skills are **not tied to CodeAlive** — they work with any agent that sup
 |-------|-------------|---------|
 | [agents-consilium](skills/agents-consilium/) | Multi-agent orchestration — query Codex, Claude Code, OpenCode, Gemini in parallel. Different models bring **different angles**: more original ideas in brainstorming & feature design, and broader coverage in code review (each model spots a different scope of issues) | `npx skills add CodeAlive-AI/awesome-agent-skills@agents-consilium -g -y` |
 | [ubiquitous-language](skills/ubiquitous-language/) | Domain thesaurus manager — DDD naming consistency, thesaurus generation, naming audit | `npx skills add CodeAlive-AI/awesome-agent-skills@ubiquitous-language -g -y` |
+| [semantic-scholar-deep](skills/semantic-scholar-deep/) | Deep research over the Semantic Scholar Graph API — backward references, recommendations, batch lookup (up to 500 IDs), multi-hop citation-graph BFS, snippet search. Ships with an optional paired subagent for token-isolated literature reviews | `npx skills add CodeAlive-AI/awesome-agent-skills@semantic-scholar-deep -g -y` |
 
 ## Contributing
 
