@@ -216,7 +216,7 @@ git diff HEAD | scripts/code-review.sh --xml --diff
 ### Finding schema (XML output)
 
 ```xml
-<finding index="N" severity="critical|warning|nit" category="security|correctness"
+<finding index="N" severity="critical|high|medium|low" category="security|correctness"
          file="..." line-start="N" line-end="N" confidence="0.0..1.0"
          source-agent="..." source-role="security|correctness"
          quote-valid="true|false">
@@ -228,6 +228,29 @@ git diff HEAD | scripts/code-review.sh --xml --diff
 ```
 
 Findings are sorted `severity desc, confidence desc`. No severity filtering by default — triage is the caller's job.
+
+### Severity rubric
+
+Unified across security + correctness. Specialists score each finding on two axes (worst-case impact × likelihood/reachability) and pick the tier that matches. Synthesized from CVSS v4, OWASP Risk Rating, GitHub Advisory DB, Chromium, MSRC, SEI CERT, SonarQube, Semgrep.
+
+| Severity | Action horizon | Operational definition | Security examples | Correctness examples |
+|----------|----------------|------------------------|-------------------|----------------------|
+| **critical** | Merge blocker | RCE / trust-boundary bypass / data loss / guaranteed outage, with a concrete exploit or dataflow trace | SQLi on public endpoint with concatenated query; unsafe deserialization of untrusted input; hardcoded prod credential | Payment/ledger math silently corrupts balances; unconditional null deref on hot request path; race on shared mutable state under prod load |
+| **high** | Fix before release | Critical-tier impact gated by a non-trivial precondition (auth, specific config), OR moderate impact with high reachability | Stored XSS in authenticated admin view; CSRF on state-changing endpoint; path traversal behind login; missing authz on tenant resource | Unhandled exception on documented error path crashing a worker; file/DB-handle leak exhausting pools; retry logic that double-charges |
+| **medium** | Schedule | Limited impact (info disclosure, localized incorrectness, degraded-but-recoverable), OR critical impact gated by implausible preconditions | Stack traces leaked to end users; missing `HttpOnly`/`Secure` on non-session cookie; weak-but-not-broken crypto parameter | Incorrect edge-case handling in non-critical helper; missing input validation that callers already satisfy; N+1 query degrading a list endpoint |
+| **low** | Optional / backlog | Cosmetic, stylistic, defense-in-depth; minimal real-world impact | Missing `nosniff` header where CSP already mitigates; `Math.random()` for non-security id | Dead code; inconsistent naming; redundant null check after non-null assertion |
+
+Adjustments: downgrade one level on mitigating factors (auth required, non-default config, unusual interaction). Speculative findings stay at the lower tier — upgrade only with a working PoC or trace.
+
+### Using the results (for the caller)
+
+You are the adjudicator. Specialists emit independent findings — your job is to **select and synthesize**, not re-review (RovoDev 2601.01129, RevAgent 2511.00517).
+
+1. **Drop quote-mismatched findings** (`quote-valid="false"`) — likely hallucinations.
+2. **Merge duplicates across specialists.** Same root cause in different framings → one item; keep the clearer rationale and note both agents.
+3. **Surface conflicts without resolving them.** If Security says "sanitize X" and Correctness says "X is fine" — present both to the user and let them adjudicate; don't break the tie yourself.
+4. **Gate by action horizon** using the severity rubric above: `critical` = block the merge, `high` = fix before release, `medium` = track, `low` = optional.
+5. **Do not re-review.** Do not generate new findings inside the adjudication step. Do not run a debate loop — adversarial re-reviewing empirically reduces precision (CR-Bench 2603.11078).
 
 ### When NOT to use code-review mode
 

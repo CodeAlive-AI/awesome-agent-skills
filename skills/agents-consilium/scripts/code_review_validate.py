@@ -166,7 +166,15 @@ def render_xml(
     return "\n".join(lines)
 
 
-SEVERITY_ORDER = {"critical": 0, "warning": 1, "nit": 2}
+SEVERITY_ORDER = {
+    "critical": 0,
+    "high": 1,
+    "medium": 2,
+    "low": 3,
+    # Legacy aliases — accepted silently so older specialist outputs still sort.
+    "warning": 1,
+    "nit": 3,
+}
 
 
 def sort_key(f: Finding):
@@ -193,10 +201,13 @@ def render_markdown(
         out.append("_No findings._")
         return "\n".join(out)
 
+    sev_alias = {"warning": "high", "nit": "low"}
     grouped: dict[str, list[Finding]] = {}
     for f in findings:
-        grouped.setdefault(f.attrs.get("severity", "unknown").lower(), []).append(f)
-    for sev in ("critical", "warning", "nit", "unknown"):
+        raw = f.attrs.get("severity", "unknown").lower()
+        sev = sev_alias.get(raw, raw)
+        grouped.setdefault(sev, []).append(f)
+    for sev in ("critical", "high", "medium", "low", "unknown"):
         items = grouped.get(sev, [])
         if not items:
             continue

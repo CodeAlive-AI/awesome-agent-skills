@@ -154,7 +154,7 @@ Do NOT add prose, headings, markdown, or XML outside the <finding> elements.
 </task>
 
 <schema>
-<finding severity="critical|warning|nit" category="security|correctness" file="${label}" line-start="N" line-end="N" confidence="0.0..1.0">
+<finding severity="critical|high|medium|low" category="security|correctness" file="${label}" line-start="N" line-end="N" confidence="0.0..1.0">
   <title>one-sentence summary</title>
   <rationale><![CDATA[why this is an issue; include ONE reason this might be a false positive]]></rationale>
   <suggested-fix><![CDATA[concrete code or steps]]></suggested-fix>
@@ -162,11 +162,27 @@ Do NOT add prose, headings, markdown, or XML outside the <finding> elements.
 </finding>
 </schema>
 
+<severity_rubric>
+Score each finding on TWO axes — worst-case impact, and likelihood/reachability — then map:
+
+- **critical** — RCE, auth/trust-boundary bypass, data loss, or guaranteed production outage, AND exploitation is likely in the as-written code path. Merge blocker. Emit ONLY with a concrete exploit/dataflow trace.
+- **high** — critical-tier impact gated by a non-trivial precondition (auth required, specific config, user interaction), OR moderate impact with high reachability (e.g. unhandled exception on a documented error path, resource leak that exhausts pools in prod). Fix before release.
+- **medium** — limited impact (verbose error leakage, localized incorrectness, degraded-but-recoverable behavior), OR critical impact gated by implausible preconditions. Schedule; not a merge blocker.
+- **low** — cosmetic, stylistic, defense-in-depth, or theoretical issues with minimal real-world impact. Optional / backlog. Suppress unless unambiguous.
+
+Adjustments: downgrade one level on mitigating factors (auth required, non-default config, unusual interaction). Do NOT upgrade speculative findings — require a concrete PoC or trace to claim the higher tier.
+</severity_rubric>
+
 <rules>
 - Cite real line numbers. quoted-code MUST match the input text at those lines exactly; the caller validates this.
+- HALLUCINATION GATE: the finding MUST reference a symbol, expression, or construct that is actually present in <input>. Do not invent APIs, flags, parameters, or patterns that aren't there.
+- ACTIONABILITY GATE: every finding MUST cite a concrete line range AND include a concrete <suggested-fix> (real code or a precise instruction). Vague advice ("be careful with user input", "consider refactoring") = suppress.
+- FIX-CONSISTENCY GATE: for severity=critical|warning, re-read your rationale and suggested-fix as a pair. If the fix would not clearly eliminate the hypothesized defect, drop the finding (or downgrade to nit). An inability to write a coherent fix is a strong signal the defect is imaginary.
 - Confidence MUST reflect genuine uncertainty. A finding you are not sure about belongs at confidence <= 0.6.
 - Stay inside your specialization. Do not emit findings from other categories.
 - No nits unless they are on the critical path of the specialization.
+- OUTPUT CAP: emit at most 3 findings. If more candidates survive the gates, keep the top 3 by (severity, confidence). The caller prefers a short, high-signal list over exhaustive coverage.
+- Tone: educational, not accusatory. Describe the issue and the fix; don't editorialize about the author.
 - Keep rationale under 6 sentences.
 - You have read-only access to the surrounding project directory. Use it: Read/Grep/Glob neighboring files, check call sites, look at tests, consult CLAUDE.md / README / config, and verify data flow before asserting a finding. Do not modify anything.
 </rules>

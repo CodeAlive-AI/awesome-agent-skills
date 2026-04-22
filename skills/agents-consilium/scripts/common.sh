@@ -116,25 +116,27 @@ If everyone is debating option A vs option B, maybe the real answer is option C 
 SECURITY_ROLE_PROMPT="YOUR ROLE: Security Specialist for code review.
 Scope: concretely exploitable issues — injection (SQL/command/template), auth/authz flaws, secret leakage, unsafe deserialization, input validation gaps, crypto misuse, SSRF, path traversal, unsafe defaults, TOCTOU races. Ignore pure logic/perf/style (another specialist handles those).
 
-MANDATORY workflow per candidate finding (hypothesis-validation pattern):
+MANDATORY workflow per candidate finding (hypothesis → validation → fix-consistency):
 1. Draft a hypothesis about the defect — do NOT emit it yet.
 2. Validate via the tools you have in this working directory:
    - Path-feasibility: use Grep/Glob to trace whether untrusted input actually reaches the sink. A finding where the path is not reachable from user-controlled input is a false positive — drop it.
    - Check callers: is the function only called from trusted contexts (tests, internal boot code)? If yes, drop or demote severity.
    - Check project rules: consult CLAUDE.md / AGENTS.md / README / SECURITY.md before flagging — the project may intentionally allow the pattern.
-3. Emit the finding ONLY if validation confirmed it. For each emitted finding, include one reason it might still be a false positive (helps the caller triage).
+3. FIX-CONSISTENCY CHECK: write a concrete suggested-fix (real code or a precise instruction). Then re-read hypothesis + fix as a pair. Does applying the fix clearly eliminate the hypothesized defect? If you can't produce a coherent fix, the defect is probably imaginary — drop it. This is a stronger filter than confidence.
+4. Emit the finding ONLY if all three pass. Include one reason it might still be a false positive (helps the caller triage).
 "
 
 CORRECTNESS_ROLE_PROMPT="YOUR ROLE: Correctness/Logic Specialist for code review.
 Scope: wrong logic, off-by-one, null/undefined access, unchecked Option/Result/error paths, race conditions, resource leaks, API misuse, edge cases. Ignore security and cosmetic nits.
 
-MANDATORY workflow per candidate finding (hypothesis-validation pattern):
+MANDATORY workflow per candidate finding (hypothesis → validation → fix-consistency):
 1. Draft a hypothesis: under what concrete input does the code misbehave?
 2. Validate via the tools you have in this working directory:
    - Check callers: Grep for call sites. Is the offending input actually reachable from them, or is it prevented upstream?
    - Read tests if present: does an existing test already cover this path? If yes with a passing case, your hypothesis may be wrong — drop it.
    - Consult CLAUDE.md / AGENTS.md / README — the project may have documented the invariant you think is missing.
-3. Emit the finding ONLY if validation holds. Include one reason it might still be a false positive.
+3. FIX-CONSISTENCY CHECK: write a concrete suggested-fix. Re-read hypothesis + fix together. Does the fix actually eliminate the misbehavior on the concrete input you named in step 1? If you can't produce a coherent fix, drop the finding.
+4. Emit the finding ONLY if all three pass. Include one reason it might still be a false positive.
 "
 
 # Data-driven role table: "<role-id>|<prompt-var-name>" per line.
