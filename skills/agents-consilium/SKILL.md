@@ -7,12 +7,21 @@ description: "Query external AI agents (Codex, Gemini, OpenCode, Claude Code hea
 
 Query external AI agents for independent, unbiased expert opinions. Each agent has a distinct thinking role and responds in a structured format for easy comparison.
 
+## Why this skill
+
+**Different frontier models see different things.** Each has a slightly different training distribution, tool-use style, and failure mode — so they latch onto different aspects of the same problem.
+
+- **Brainstorming / problem-solving / feature design.** Querying Codex + Claude + OpenCode/Gemini (or any subset) in parallel yields a wider solution space than any single model alone. You get original, non-obvious alternatives that one model would never surface on its own.
+- **Code review.** Different models find different issues. One catches a subtle race condition; another flags an auth gap; a third questions the architecture. The union of their findings is materially broader than a single-reviewer pass.
+
+The skill keeps each agent independent (no debate, no cross-contamination) and lets the caller adjudicate — you get raw parallel perspectives, not a homogenized committee answer.
+
 ## Contents
 
 - [Quick Start](#quick-start)
 - [Design Principles](#design-principles)
 - [Anti-Bias Protocol](#anti-bias-protocol)
-- [Read-Only Mode](#read-only-mode)
+- [Agent Freedom and Read-Only Guardrails](#agent-freedom-and-read-only-guardrails)
 - [Configuration](#configuration)
   - [OpenCode provider choice: Zen vs Google direct](#opencode-provider-choice-zen-vs-google-direct)
   - [Claude Code backend](#claude-code-backend)

@@ -10,7 +10,7 @@ These skills are **not tied to CodeAlive** — they work with any agent that sup
 
 | Skill | Description | Install |
 |-------|-------------|---------|
-| [agents-consilium](skills/agents-consilium/) | Multi-agent orchestration — query Codex CLI and Gemini CLI for independent expert opinions | `npx skills add CodeAlive-AI/awesome-agent-skills@agents-consilium -g -y` |
+| [agents-consilium](skills/agents-consilium/) | Multi-agent orchestration — query Codex, Claude Code, OpenCode, Gemini in parallel. Different models bring **different angles**: more original ideas in brainstorming & feature design, and broader coverage in code review (each model spots a different scope of issues) | `npx skills add CodeAlive-AI/awesome-agent-skills@agents-consilium -g -y` |
 | [ubiquitous-language](skills/ubiquitous-language/) | Domain thesaurus manager — DDD naming consistency, thesaurus generation, naming audit | `npx skills add CodeAlive-AI/awesome-agent-skills@ubiquitous-language -g -y` |
 
 ## Contributing
