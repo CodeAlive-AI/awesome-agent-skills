@@ -106,7 +106,7 @@ Agents are declared in `config.json` at the skill root. Each agent has:
 | `effort` | **opencode only:** provider-specific reasoning effort — `high` (default), `max`, `minimal`, or any other variant the provider exposes. Maps to `opencode run --variant`. |
 
 Default config (`config.json`):
-- `codex` (backend=codex-cli, model=gpt-5.4, role=analyst) — **enabled**
+- `codex` (backend=codex-cli, model=gpt-5.5, role=analyst) — **enabled**
 - `gemini-cli` (backend=gemini-cli, model=gemini-3.1-pro-preview, role=lateral) — **disabled**
 - `opencode` (backend=opencode, model=opencode/gemini-3.1-pro, role=lateral, effort=high) — **enabled**
 - `claude-code` (backend=claude-code, model=opus, role=analyst) — **disabled**

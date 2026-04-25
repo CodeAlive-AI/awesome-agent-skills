@@ -4,7 +4,7 @@
     "codex": {
       "enabled": true,
       "backend": "codex-cli",
-      "model": "gpt-5.4",
+      "model": "gpt-5.5",
       "role": "analyst",
       "label": "Codex"
     },
