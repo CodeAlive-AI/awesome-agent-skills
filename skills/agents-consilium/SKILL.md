@@ -108,8 +108,15 @@ Agents are declared in `config.json` at the skill root. Each agent has:
 Default config (`config.json`):
 - `codex` (backend=codex-cli, model=gpt-5.4, role=analyst) — **enabled**
 - `gemini-cli` (backend=gemini-cli, model=gemini-3.1-pro-preview, role=lateral) — **disabled**
-- `opencode` (backend=opencode, model=opencode/gemini-3.1-pro, role=lateral) — **enabled**
+- `opencode` (backend=opencode, model=opencode/gemini-3.1-pro, role=lateral, effort=high) — **enabled**
 - `claude-code` (backend=claude-code, model=opus, role=analyst) — **disabled**
+- `opencode-go-minimax` (backend=opencode, model=opencode-go/minimax-m2.7, role=lateral, effort=high) — **enabled**
+- `opencode-go-deepseek` (backend=opencode, model=opencode-go/deepseek-v4-pro, role=analyst, effort=high) — **enabled**
+- `opencode-go-mimo` (backend=opencode, model=opencode-go/mimo-v2.5-pro, role=lateral, effort=high) — **enabled**
+- `opencode-go-kimi` (backend=opencode, model=opencode-go/kimi-k2.6, role=analyst, effort=high) — **enabled**
+- `opencode-go-glm` (backend=opencode, model=opencode-go/glm-5.1, role=lateral, effort=high) — **enabled**
+
+Multiple agents can share one backend — the dispatcher passes the entry id through `CONSILIUM_AGENT_ID`, so each backend script reads its own slice of `config.json`.
 
 Edit `config.json` to flip agents on/off or change models. Set `CONSILIUM_CONFIG=/path/to/custom.json` to use an override file.
 

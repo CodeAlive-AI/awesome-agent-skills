@@ -44,6 +44,46 @@
       "model": "sonnet",
       "role": "lateral",
       "label": "Claude Sonnet (Lateral)"
+    },
+    "opencode-go-minimax": {
+      "enabled": true,
+      "backend": "opencode",
+      "model": "opencode-go/minimax-m2.7",
+      "effort": "high",
+      "role": "lateral",
+      "label": "OC-Go MiniMax M2.7"
+    },
+    "opencode-go-deepseek": {
+      "enabled": true,
+      "backend": "opencode",
+      "model": "opencode-go/deepseek-v4-pro",
+      "effort": "high",
+      "role": "analyst",
+      "label": "OC-Go DeepSeek V4 Pro"
+    },
+    "opencode-go-mimo": {
+      "enabled": true,
+      "backend": "opencode",
+      "model": "opencode-go/mimo-v2.5-pro",
+      "effort": "high",
+      "role": "lateral",
+      "label": "OC-Go MiMo V2.5 Pro"
+    },
+    "opencode-go-kimi": {
+      "enabled": true,
+      "backend": "opencode",
+      "model": "opencode-go/kimi-k2.6",
+      "effort": "high",
+      "role": "analyst",
+      "label": "OC-Go Kimi K2.6"
+    },
+    "opencode-go-glm": {
+      "enabled": true,
+      "backend": "opencode",
+      "model": "opencode-go/glm-5.1",
+      "effort": "high",
+      "role": "lateral",
+      "label": "OC-Go GLM-5.1"
     }
   }
 }

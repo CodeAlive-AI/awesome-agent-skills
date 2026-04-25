@@ -24,11 +24,13 @@ At least one backend CLI must be installed and authenticated:
 | Backend | Install | Auth |
 |---------|---------|------|
 | [Codex CLI](https://github.com/openai/codex) | `npm i -g @openai/codex` | `codex` (ChatGPT login) |
-| [OpenCode](https://opencode.ai) | See site | `opencode providers login opencode` (Zen) or `GOOGLE_GENERATIVE_AI_API_KEY` (Google direct) |
+| [OpenCode](https://opencode.ai) | See site | `opencode providers login opencode` (Zen) / `opencode providers login opencode-go` (Go subscription) / `GOOGLE_GENERATIVE_AI_API_KEY` (Google direct) |
 | [Claude Code](https://docs.claude.com/claude-code) | See site | `claude /login` |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm i -g @google/gemini-cli` | `GEMINI_API_KEY` |
 
-Default config enables **codex** + **opencode** (Zen / Gemini 3.1 Pro). `gemini-cli` and `claude-code` are disabled by default — flip `enabled: true` in `config.json` to add them.
+Default config enables **codex** + **opencode** (Zen / Gemini 3.1 Pro) + five **OpenCode Go** models (`MiniMax M2.7`, `DeepSeek V4 Pro`, `MiMo V2.5 Pro`, `Kimi K2.6`, `GLM-5.1`), all at `effort: high`. `gemini-cli` and `claude-code` are disabled by default — flip `enabled: true` in `config.json` to add them, or disable any OC-Go entry to trim parallelism.
+
+Multiple agents can share one backend (e.g. five OpenCode-Go models all use `backend: "opencode"`). Per-agent config is selected by the entry's id; the dispatcher passes it through `CONSILIUM_AGENT_ID`.
 
 ## Quick start
 

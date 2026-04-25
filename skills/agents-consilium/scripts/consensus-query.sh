@@ -121,9 +121,9 @@ for agent in "${ENABLED_AGENTS[@]}"; do
     out=$(mktemp)
     err=$(mktemp)
     if [[ -n "$STDIN_CONTENT" ]]; then
-        echo "$STDIN_CONTENT" | "$script" "$PROMPT" > "$out" 2>"$err" &
+        echo "$STDIN_CONTENT" | CONSILIUM_AGENT_ID="$agent" "$script" "$PROMPT" > "$out" 2>"$err" &
     else
-        "$script" "$PROMPT" > "$out" 2>"$err" &
+        CONSILIUM_AGENT_ID="$agent" "$script" "$PROMPT" > "$out" 2>"$err" &
     fi
 
     STATUSES+=("pending")

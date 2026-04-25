@@ -33,7 +33,7 @@ fi
 
 config_validate || exit $EXIT_CONFIG_ERROR
 
-AGENT_ID="opencode"
+AGENT_ID="${CONSILIUM_AGENT_ID:-opencode}"
 
 if ! config_is_enabled "$AGENT_ID"; then
     echo -e "${YELLOW}[OpenCode] Disabled in config ($CONSILIUM_CONFIG). Skipping.${NC}" >&2

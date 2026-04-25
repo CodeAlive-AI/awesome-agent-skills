@@ -218,6 +218,7 @@ for i in "${!ASSIGN_AGENTS[@]}"; do
 
     prompt="$(make_prompt "$INPUT_KIND" "$INPUT_SOURCE_LABEL" "$CODE_CONTENT")"
     (
+        CONSILIUM_AGENT_ID="$agent" \
         CONSILIUM_ROLE_OVERRIDE="$role" \
         CONSILIUM_SKIP_OUTPUT_TEMPLATE=1 \
         "$script" "$prompt" > "$out" 2>"$err"
