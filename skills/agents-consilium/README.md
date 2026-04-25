@@ -47,6 +47,13 @@ scripts/consensus-query.sh --xml "Review this function" < src/auth.py
 # 4. Code review mode (2 specialists, quoted-code validated).
 scripts/code-review.sh path/to/file.py
 git diff HEAD | scripts/code-review.sh --xml --diff
+
+# 5. Ad-hoc agent selection (no config edit). Repeatable; globs supported.
+scripts/consensus-query.sh -a opencode-go-kimi "Q"        # one agent
+scripts/consensus-query.sh -a 'opencode-go-*' "Q"          # all OC-Go models
+scripts/consensus-query.sh -x codex "Q"                    # everything except codex
+scripts/consensus-query.sh -a codex -a opencode-go-kimi "Q"  # composition
+CONSILIUM_AGENTS='codex,opencode-go-kimi' scripts/code-review.sh file.py  # env form
 ```
 
 ## What it does

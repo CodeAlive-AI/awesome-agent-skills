@@ -152,3 +152,16 @@ for name, agent in cfg.get("agents", {}).items():
 print("</consilium-plan>")
 '
 }
+
+# Match a value against any glob/literal pattern in the remaining args.
+# Returns 0 (match) on first hit, 1 otherwise.
+# Usage: config_match_any "agent-id" "pat1" "pat2" ...
+config_match_any() {
+    local val="$1"; shift
+    local pat
+    for pat in "$@"; do
+        # shellcheck disable=SC2053
+        [[ "$val" == $pat ]] && return 0
+    done
+    return 1
+}

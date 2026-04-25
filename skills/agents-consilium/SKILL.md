@@ -174,16 +174,36 @@ scripts/consensus-query.sh --xml "review this"            # XML report for agent
 scripts/consensus-query.sh --list-agents                   # dry-run: dump plan, don't query
 ```
 
-`consensus-query.sh` reads `config.json`, launches every agent with `enabled=true` in parallel, and prints their responses grouped by label. Add/remove agents purely by editing the config.
+`consensus-query.sh` reads `config.json`, launches every agent with `enabled=true` in parallel, and prints their responses grouped by label. Add/remove agents permanently by editing the config; for ad-hoc runs use `-a/--agents` and `-x/--exclude` (see below).
 
 ### Flags & Exit Codes
 
-All scripts accept `-h` / `--help`. `consensus-query.sh` also accepts:
+All scripts accept `-h` / `--help`. Both `consensus-query.sh` and `code-review.sh` accept:
 
 | Flag | Effect |
 |------|--------|
-| `--xml` | Emit `<consilium-report>` with each agent wrapped in `<agent>…<response><![CDATA[…]]></response></agent>`. Stable for agent consumers (no markdown-heading collision). |
-| `--list-agents` | Print `<consilium-plan>` (every configured agent, enabled/disabled, with `backend-available`) and exit. No queries are run — use this as an inspection / dry-run. |
+| `--xml` | Emit `<consilium-report>` (or `<code-review-report>`) with each agent wrapped in `<agent>…<response><![CDATA[…]]></response></agent>`. Stable for agent consumers (no markdown-heading collision). |
+| `--list-agents` *(consensus only)* | Print `<consilium-plan>` (every configured agent, enabled/disabled, with `backend-available`) and exit. No queries are run — use this as an inspection / dry-run. |
+| `-a, --agents <ID\|GLOB>` | Override the active agent set with this id or glob (e.g. `'opencode-go-*'`). **Repeatable**; comma-separated values also accepted (`-a codex,opencode-go-kimi`). When given, the per-agent `enabled` flag in `config.json` is ignored — only matched agents run. Falls back to env `CONSILIUM_AGENTS`. |
+| `-x, --exclude <ID\|GLOB>` | Subtract matching agents from the active set. Repeatable. Combine with `--agents` for include-then-exclude composition. Falls back to env `CONSILIUM_EXCLUDE`. |
+
+**Ad-hoc agent selection examples:**
+```bash
+# Single agent
+scripts/consensus-query.sh -a opencode-go-kimi "Q"
+
+# All OC-Go models (glob)
+scripts/consensus-query.sh -a 'opencode-go-*' "Q"
+
+# Everything-except-codex
+scripts/consensus-query.sh -x codex "Q"
+
+# Composition: only OC-Go but skip MiniMax
+scripts/consensus-query.sh -a 'opencode-go-*' -x opencode-go-minimax "Q"
+
+# Same via env (scriptable)
+CONSILIUM_AGENTS='codex,opencode-go-kimi' scripts/consensus-query.sh "Q"
+```
 
 Exit codes (stable across all scripts):
 

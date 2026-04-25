@@ -6,6 +6,9 @@
 #   consensus-query.sh "question"
 #   consensus-query.sh --xml "question"
 #   cat file.ts | consensus-query.sh "review this code"
+#   consensus-query.sh -a codex -a opencode-go-kimi "question"
+#   consensus-query.sh -a 'opencode-go-*' "question"
+#   consensus-query.sh -x codex "question"
 #   consensus-query.sh --list-agents        # dump plan as XML, no queries
 #   consensus-query.sh --help
 #
@@ -14,7 +17,19 @@
 #                    Default is a human-readable markdown report.
 #   --list-agents    Print the current plan (all configured agents, enabled/disabled,
 #                    with model/role/backend-available) as XML and exit 0.
+#   -a, --agents <ID|GLOB>
+#                    Override the active agent set with this id or glob (e.g. 'opencode-go-*').
+#                    Repeatable; comma-separated values also accepted (-a codex,opencode).
+#                    When given, the per-agent "enabled" flag in config.json is ignored —
+#                    only matched agents run.
+#   -x, --exclude <ID|GLOB>
+#                    Subtract matching agents from the active set. Repeatable.
+#                    Combine with --agents for include-then-exclude composition.
 #   -h, --help       Show this help.
+#
+# Environment overrides:
+#   CONSILIUM_AGENTS    Comma-separated --agents fallback when no -a is passed.
+#   CONSILIUM_EXCLUDE   Comma-separated --exclude fallback when no -x is passed.
 #
 # Exit codes:
 #   0 — all queried agents succeeded (or --list-agents completed)
@@ -32,17 +47,38 @@ source "$SCRIPT_DIR/config.sh"
 OUTPUT_FORMAT="markdown"  # markdown | xml
 LIST_ONLY=false
 PROMPT=""
+INCLUDE_PATTERNS=()
+EXCLUDE_PATTERNS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --xml)          OUTPUT_FORMAT="xml"; shift ;;
         --list-agents)  LIST_ONLY=true; shift ;;
-        -h|--help)      sed -n '2,26p' "$0"; exit $EXIT_OK ;;
+        -a|--agents|--agent)
+                        shift
+                        IFS=',' read -ra _parts <<< "${1:-}"
+                        INCLUDE_PATTERNS+=("${_parts[@]}")
+                        shift
+                        ;;
+        -x|--exclude)   shift
+                        IFS=',' read -ra _parts <<< "${1:-}"
+                        EXCLUDE_PATTERNS+=("${_parts[@]}")
+                        shift
+                        ;;
+        -h|--help)      sed -n '2,36p' "$0"; exit $EXIT_OK ;;
         --)             shift; PROMPT="${1:-}"; break ;;
         -*)             echo -e "${RED}Error: unknown flag: $1${NC}" >&2; exit $EXIT_USAGE ;;
         *)              PROMPT="$1"; shift; break ;;
     esac
 done
+
+# Env-var fallbacks (only when no CLI flag of the same kind was given).
+if [[ ${#INCLUDE_PATTERNS[@]} -eq 0 && -n "${CONSILIUM_AGENTS:-}" ]]; then
+    IFS=',' read -ra INCLUDE_PATTERNS <<< "$CONSILIUM_AGENTS"
+fi
+if [[ ${#EXCLUDE_PATTERNS[@]} -eq 0 && -n "${CONSILIUM_EXCLUDE:-}" ]]; then
+    IFS=',' read -ra EXCLUDE_PATTERNS <<< "$CONSILIUM_EXCLUDE"
+fi
 
 config_validate || exit $EXIT_CONFIG_ERROR
 
@@ -69,18 +105,44 @@ backend_script() {
     esac
 }
 
-ENABLED_AGENTS=()
-while IFS= read -r a; do
-    [[ -n "$a" ]] && ENABLED_AGENTS+=("$a")
-done < <(config_enabled_agents)
-
 ALL_AGENTS=()
 while IFS= read -r a; do
     [[ -n "$a" ]] && ALL_AGENTS+=("$a")
 done < <(config_all_agents)
 
+# Build candidate set: --agents overrides config's "enabled" field.
+CANDIDATES=()
+if [[ ${#INCLUDE_PATTERNS[@]} -gt 0 ]]; then
+    for a in "${ALL_AGENTS[@]}"; do
+        config_match_any "$a" "${INCLUDE_PATTERNS[@]}" && CANDIDATES+=("$a")
+    done
+    if [[ ${#CANDIDATES[@]} -eq 0 ]]; then
+        echo -e "${RED}Error: no agents matched --agents patterns: ${INCLUDE_PATTERNS[*]}${NC}" >&2
+        echo "Configured agents: ${ALL_AGENTS[*]}" >&2
+        exit $EXIT_CONFIG_ERROR
+    fi
+else
+    while IFS= read -r a; do
+        [[ -n "$a" ]] && CANDIDATES+=("$a")
+    done < <(config_enabled_agents)
+fi
+
+# Apply --exclude.
+ENABLED_AGENTS=()
+if [[ ${#EXCLUDE_PATTERNS[@]} -gt 0 ]]; then
+    for a in "${CANDIDATES[@]}"; do
+        config_match_any "$a" "${EXCLUDE_PATTERNS[@]}" || ENABLED_AGENTS+=("$a")
+    done
+else
+    ENABLED_AGENTS=("${CANDIDATES[@]}")
+fi
+
 if [[ ${#ENABLED_AGENTS[@]} -eq 0 ]]; then
-    echo -e "${RED}Error: no agents enabled in $CONSILIUM_CONFIG${NC}" >&2
+    if [[ ${#INCLUDE_PATTERNS[@]} -gt 0 || ${#EXCLUDE_PATTERNS[@]} -gt 0 ]]; then
+        echo -e "${RED}Error: no agents remain after include/exclude filters${NC}" >&2
+    else
+        echo -e "${RED}Error: no agents enabled in $CONSILIUM_CONFIG${NC}" >&2
+    fi
     exit $EXIT_CONFIG_ERROR
 fi
 
@@ -215,12 +277,18 @@ if [[ "$OUTPUT_FORMAT" == "xml" ]]; then
         model="$(config_get_field "$agent" model)"
         role="$(config_get_field "$agent" role)"
         backend="$(config_get_field "$agent" backend)"
-        printf '  <agent id="%s" label="%s" backend="%s" model="%s" role="%s" status="disabled"/>\n' \
+        if config_is_enabled "$agent"; then
+            status_attr="filtered"  # enabled in config but excluded at runtime
+        else
+            status_attr="disabled"
+        fi
+        printf '  <agent id="%s" label="%s" backend="%s" model="%s" role="%s" status="%s"/>\n' \
             "$(printf '%s' "$agent"   | xml_escape)" \
             "$(printf '%s' "$label"   | xml_escape)" \
             "$(printf '%s' "$backend" | xml_escape)" \
             "$(printf '%s' "$model"   | xml_escape)" \
-            "$(printf '%s' "$role"    | xml_escape)"
+            "$(printf '%s' "$role"    | xml_escape)" \
+            "$status_attr"
     done
     echo "</consilium-report>"
 else
@@ -238,18 +306,23 @@ else
             skipped) echo "[${label} skipped: backend unavailable]" ;;
         esac
     done
-    # Disabled block.
-    disabled_any=false
+    # Inactive block (config-disabled or runtime-filtered).
+    inactive_any=false
     for agent in "${ALL_AGENTS[@]}"; do
         in_enabled=false
         for a in "${ENABLED_AGENTS[@]}"; do
             [[ "$a" == "$agent" ]] && in_enabled=true && break
         done
         $in_enabled && continue
-        $disabled_any || { echo ""; echo "## Disabled agents"; echo ""; disabled_any=true; }
+        $inactive_any || { echo ""; echo "## Inactive agents (not queried)"; echo ""; inactive_any=true; }
         label="$(config_get_field "$agent" label)"; label="${label:-$agent}"
         model="$(config_get_field "$agent" model)"
-        echo "- ${label} (${model}) — disabled in config"
+        if config_is_enabled "$agent"; then
+            reason="filtered by --agents/--exclude"
+        else
+            reason="disabled in config"
+        fi
+        echo "- ${label} (${model}) — ${reason}"
     done
     echo ""
     echo "---"

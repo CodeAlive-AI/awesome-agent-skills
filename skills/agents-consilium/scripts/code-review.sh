@@ -12,6 +12,9 @@
 #   code-review.sh --diff                  # read a unified diff from stdin
 #   git diff HEAD | code-review.sh --diff  # same, piped
 #   code-review.sh --xml <file>            # XML output (stable for agent consumers)
+#   code-review.sh -a opencode-go-kimi <file>     # ad-hoc agent override
+#   code-review.sh -a 'opencode-go-*' <file>      # glob: all OpenCode-Go agents
+#   code-review.sh -x codex <file>                # subtract from defaults
 #   code-review.sh --help
 #
 # Options:
@@ -20,7 +23,18 @@
 #                        and quoted-code validation is skipped.
 #   --xml                Emit findings as <code-review-report> XML.
 #                        Default is a markdown report grouped by severity.
+#   -a, --agents <ID|GLOB>
+#                        Override the active agent set with this id or glob.
+#                        Repeatable; comma-separated values also accepted.
+#                        When given, the per-agent "enabled" flag in config.json
+#                        is ignored — only matched agents run.
+#   -x, --exclude <ID|GLOB>
+#                        Subtract matching agents from the active set. Repeatable.
 #   -h, --help           Show this help.
+#
+# Environment overrides:
+#   CONSILIUM_AGENTS    Comma-separated --agents fallback when no -a is passed.
+#   CONSILIUM_EXCLUDE   Comma-separated --exclude fallback when no -x is passed.
 #
 # Behaviour:
 #   - Specializations: security, correctness (research-backed pair; nits/perf
@@ -47,17 +61,38 @@ source "$SCRIPT_DIR/config.sh"
 OUTPUT_FORMAT="markdown"
 INPUT_KIND="file"        # file | diff
 INPUT_PATH=""
+INCLUDE_PATTERNS=()
+EXCLUDE_PATTERNS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --xml)       OUTPUT_FORMAT="xml"; shift ;;
         --diff)      INPUT_KIND="diff"; shift ;;
-        -h|--help)   sed -n '2,42p' "$0"; exit $EXIT_OK ;;
+        -a|--agents|--agent)
+                     shift
+                     IFS=',' read -ra _parts <<< "${1:-}"
+                     INCLUDE_PATTERNS+=("${_parts[@]}")
+                     shift
+                     ;;
+        -x|--exclude)
+                     shift
+                     IFS=',' read -ra _parts <<< "${1:-}"
+                     EXCLUDE_PATTERNS+=("${_parts[@]}")
+                     shift
+                     ;;
+        -h|--help)   sed -n '2,55p' "$0"; exit $EXIT_OK ;;
         --)          shift; INPUT_PATH="${1:-}"; break ;;
         -*)          echo -e "${RED}Error: unknown flag: $1${NC}" >&2; exit $EXIT_USAGE ;;
         *)           INPUT_PATH="$1"; shift; break ;;
     esac
 done
+
+if [[ ${#INCLUDE_PATTERNS[@]} -eq 0 && -n "${CONSILIUM_AGENTS:-}" ]]; then
+    IFS=',' read -ra INCLUDE_PATTERNS <<< "$CONSILIUM_AGENTS"
+fi
+if [[ ${#EXCLUDE_PATTERNS[@]} -eq 0 && -n "${CONSILIUM_EXCLUDE:-}" ]]; then
+    IFS=',' read -ra EXCLUDE_PATTERNS <<< "$CONSILIUM_EXCLUDE"
+fi
 
 config_validate || exit $EXIT_CONFIG_ERROR
 
@@ -83,14 +118,43 @@ else
     exit $EXIT_USAGE
 fi
 
-# --- Determine agents ---
-ENABLED_AGENTS=()
+# --- Determine agents (config "enabled" by default; --agents/--exclude override) ---
+ALL_AGENTS=()
 while IFS= read -r a; do
-    [[ -n "$a" ]] && ENABLED_AGENTS+=("$a")
-done < <(config_enabled_agents)
+    [[ -n "$a" ]] && ALL_AGENTS+=("$a")
+done < <(config_all_agents)
+
+CANDIDATES=()
+if [[ ${#INCLUDE_PATTERNS[@]} -gt 0 ]]; then
+    for a in "${ALL_AGENTS[@]}"; do
+        config_match_any "$a" "${INCLUDE_PATTERNS[@]}" && CANDIDATES+=("$a")
+    done
+    if [[ ${#CANDIDATES[@]} -eq 0 ]]; then
+        echo -e "${RED}Error: no agents matched --agents patterns: ${INCLUDE_PATTERNS[*]}${NC}" >&2
+        echo "Configured agents: ${ALL_AGENTS[*]}" >&2
+        exit $EXIT_CONFIG_ERROR
+    fi
+else
+    while IFS= read -r a; do
+        [[ -n "$a" ]] && CANDIDATES+=("$a")
+    done < <(config_enabled_agents)
+fi
+
+ENABLED_AGENTS=()
+if [[ ${#EXCLUDE_PATTERNS[@]} -gt 0 ]]; then
+    for a in "${CANDIDATES[@]}"; do
+        config_match_any "$a" "${EXCLUDE_PATTERNS[@]}" || ENABLED_AGENTS+=("$a")
+    done
+else
+    ENABLED_AGENTS=("${CANDIDATES[@]}")
+fi
 
 if [[ ${#ENABLED_AGENTS[@]} -eq 0 ]]; then
-    echo -e "${RED}Error: no agents enabled in $CONSILIUM_CONFIG${NC}" >&2
+    if [[ ${#INCLUDE_PATTERNS[@]} -gt 0 || ${#EXCLUDE_PATTERNS[@]} -gt 0 ]]; then
+        echo -e "${RED}Error: no agents remain after include/exclude filters${NC}" >&2
+    else
+        echo -e "${RED}Error: no agents enabled in $CONSILIUM_CONFIG${NC}" >&2
+    fi
     exit $EXIT_CONFIG_ERROR
 fi
 
