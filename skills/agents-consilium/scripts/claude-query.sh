@@ -11,6 +11,9 @@
 # Overrides:
 #   CLAUDE_MODEL           — override model from config (alias like "opus" or full id)
 #   CLAUDE_PERMISSION_MODE — override permission mode (default: plan)
+#   CLAUDE_EFFORT          — reasoning effort level (low, medium, high, xhigh, max).
+#                            Defaults to the "effort" field in config.json; omitted
+#                            if both env and config are empty (uses CLI default).
 #
 # Exit codes:
 #   0 — success, or agent disabled (skipped)
@@ -25,7 +28,7 @@ source "$SCRIPT_DIR/common.sh"
 source "$SCRIPT_DIR/config.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    sed -n '2,20p' "$0"
+    sed -n '2,23p' "$0"
     exit $EXIT_OK
 fi
 
@@ -43,6 +46,7 @@ ROLE_ID="${CONSILIUM_ROLE_OVERRIDE:-$(config_get_field "$AGENT_ID" role)}"
 LABEL="$(config_get_field "$AGENT_ID" label)"
 LABEL="${LABEL:-ClaudeCode}"
 PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-plan}"
+EFFORT="${CLAUDE_EFFORT:-$(config_get_field "$AGENT_ID" effort)}"
 
 if ! ROLE_PROMPT="$(get_role_prompt "$ROLE_ID")"; then
     echo -e "${RED}Error: unknown role '$ROLE_ID' for claude-code in config${NC}" >&2
@@ -67,17 +71,24 @@ fi
 export FULL_PROMPT
 FULL_PROMPT=$(build_prompt "$ROLE_PROMPT" "$PROMPT" "$CONTEXT_FILE")
 
-echo -e "${YELLOW}[${LABEL}] Querying ${MODEL} via claude -p (permission-mode=${PERMISSION_MODE}, role=${ROLE_ID})...${NC}" >&2
+echo -e "${YELLOW}[${LABEL}] Querying ${MODEL} via claude -p (permission-mode=${PERMISSION_MODE}, effort=${EFFORT:-default}, role=${ROLE_ID})...${NC}" >&2
 
 # Runs in the caller's CWD so Claude can freely read the real project
 # (Read/Grep/Glob/Bash read-only). Writes are blocked by --permission-mode plan.
 export CLAUDE_MODEL_RESOLVED="$MODEL"
 export CLAUDE_PERMISSION_MODE_RESOLVED="$PERMISSION_MODE"
+export CLAUDE_EFFORT_RESOLVED="$EFFORT"
 
 run_claude() {
+    local effort_arg=()
+    # Only pass --effort if explicitly set; empty = CLI default.
+    if [[ -n "$CLAUDE_EFFORT_RESOLVED" ]]; then
+        effort_arg=(--effort "$CLAUDE_EFFORT_RESOLVED")
+    fi
     claude -p "$FULL_PROMPT" \
         --model "$CLAUDE_MODEL_RESOLVED" \
         --permission-mode "$CLAUDE_PERMISSION_MODE_RESOLVED" \
+        "${effort_arg[@]}" \
         --output-format text 2>/dev/null
 }
 

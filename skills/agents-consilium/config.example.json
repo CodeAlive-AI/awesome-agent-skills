@@ -35,6 +35,7 @@
       "enabled": false,
       "backend": "claude-code",
       "model": "opus",
+      "effort": "max",
       "role": "analyst",
       "label": "Claude Opus"
     },
@@ -42,6 +43,7 @@
       "enabled": false,
       "backend": "claude-code",
       "model": "sonnet",
+      "effort": "max",
       "role": "lateral",
       "label": "Claude Sonnet (Lateral)"
     },
@@ -57,7 +59,7 @@
       "enabled": true,
       "backend": "opencode",
       "model": "opencode-go/deepseek-v4-pro",
-      "effort": "high",
+      "effort": "max",
       "role": "analyst",
       "label": "OC-Go DeepSeek V4 Pro"
     },

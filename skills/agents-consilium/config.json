@@ -26,6 +26,7 @@
       "enabled": false,
       "backend": "claude-code",
       "model": "opus",
+      "effort": "max",
       "role": "analyst",
       "label": "ClaudeCode"
     },
@@ -41,7 +42,7 @@
       "enabled": true,
       "backend": "opencode",
       "model": "opencode-go/deepseek-v4-pro",
-      "effort": "high",
+      "effort": "max",
       "role": "analyst",
       "label": "OC-Go DeepSeek V4 Pro"
     },

@@ -28,7 +28,7 @@ At least one backend CLI must be installed and authenticated:
 | [Claude Code](https://docs.claude.com/claude-code) | See site | `claude /login` |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm i -g @google/gemini-cli` | `GEMINI_API_KEY` |
 
-Default config enables **codex** + **opencode** (Zen / Gemini 3.1 Pro) + five **OpenCode Go** models (`MiniMax M2.7`, `DeepSeek V4 Pro`, `MiMo V2.5 Pro`, `Kimi K2.6`, `GLM-5.1`), all at `effort: high`. `gemini-cli` and `claude-code` are disabled by default — flip `enabled: true` in `config.json` to add them, or disable any OC-Go entry to trim parallelism.
+Default config enables **codex** + **opencode** (Zen / Gemini 3.1 Pro) + five **OpenCode Go** models (`MiniMax M2.7`, `DeepSeek V4 Pro`, `MiMo V2.5 Pro`, `Kimi K2.6`, `GLM-5.1`). Each model uses the highest reasoning tier its provider exposes — `effort: max` for `DeepSeek V4 Pro` (and for `claude-code`/Opus when enabled), `effort: high` everywhere else (the rest top out at `high` or expose no variants). See [SKILL.md → Discovering OpenCode reasoning variants](SKILL.md#discovering-opencode-reasoning-variants-per-model) for how to enumerate variants per model. `gemini-cli` and `claude-code` are disabled by default — flip `enabled: true` in `config.json` to add them, or disable any OC-Go entry to trim parallelism.
 
 Multiple agents can share one backend (e.g. five OpenCode-Go models all use `backend: "opencode"`). Per-agent config is selected by the entry's id; the dispatcher passes it through `CONSILIUM_AGENT_ID`.
 
@@ -130,7 +130,7 @@ Agents are declared in `config.json`. Each entry:
 | `model` | Model id passed to the CLI |
 | `role` | `analyst` or `lateral` |
 | `label` | Display name in reports (optional) |
-| `effort` | **opencode only:** `high` (default), `max`, `minimal` — maps to `opencode run --variant` |
+| `effort` | **opencode:** `low`/`medium`/`high`/`max` — maps to `opencode run --variant` (provider-specific; enumerate via `opencode models <provider> --verbose`, see [SKILL.md](SKILL.md#discovering-opencode-reasoning-variants-per-model)). **claude-code:** `low`/`medium`/`high`/`xhigh`/`max` — maps to `claude --effort`. Other backends ignore. |
 
 Edit `config.json` to flip agents on/off or change models. Set `CONSILIUM_CONFIG=/path/to/custom.json` to use an override file. See `config.example.json` for a fuller template.
 

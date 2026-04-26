@@ -103,18 +103,20 @@ Agents are declared in `config.json` at the skill root. Each agent has:
 | `model` | Model id passed to that CLI |
 | `role` | `analyst` (deep/precise) or `lateral` (broad/creative) |
 | `label` | Display name in reports (optional) |
-| `effort` | **opencode only:** provider-specific reasoning effort — `high` (default), `max`, `minimal`, or any other variant the provider exposes. Maps to `opencode run --variant`. |
+| `effort` | Reasoning effort. **opencode:** maps to `opencode run --variant` (e.g. `low`, `medium`, `high`, `max`) — provider-specific, see [Discovering reasoning variants](#discovering-opencode-reasoning-variants-per-model) below. **claude-code:** maps to `claude --effort` (`low`, `medium`, `high`, `xhigh`, `max`). Other backends ignore it. |
 
 Default config (`config.json`):
 - `codex` (backend=codex-cli, model=gpt-5.5, role=analyst) — **enabled**
 - `gemini-cli` (backend=gemini-cli, model=gemini-3.1-pro-preview, role=lateral) — **disabled**
 - `opencode` (backend=opencode, model=opencode/gemini-3.1-pro, role=lateral, effort=high) — **enabled**
-- `claude-code` (backend=claude-code, model=opus, role=analyst) — **disabled**
+- `claude-code` (backend=claude-code, model=opus, effort=max, role=analyst) — **disabled**
 - `opencode-go-minimax` (backend=opencode, model=opencode-go/minimax-m2.7, role=lateral, effort=high) — **enabled**
-- `opencode-go-deepseek` (backend=opencode, model=opencode-go/deepseek-v4-pro, role=analyst, effort=high) — **enabled**
+- `opencode-go-deepseek` (backend=opencode, model=opencode-go/deepseek-v4-pro, role=analyst, effort=max) — **enabled**
 - `opencode-go-mimo` (backend=opencode, model=opencode-go/mimo-v2.5-pro, role=lateral, effort=high) — **enabled**
 - `opencode-go-kimi` (backend=opencode, model=opencode-go/kimi-k2.6, role=analyst, effort=high) — **enabled**
 - `opencode-go-glm` (backend=opencode, model=opencode-go/glm-5.1, role=lateral, effort=high) — **enabled**
+
+Effort policy: `max` is used wherever the model exposes it (`claude-code`, `opencode-go/deepseek-v4-pro`); `high` is the fallback for models that top out at `high` (`opencode/gemini-3.1-pro`, `opencode-go/mimo-v2.5-pro`) or expose no variants at all (`minimax`, `kimi`, `glm` — `effort` is set but ignored by the provider).
 
 Multiple agents can share one backend — the dispatcher passes the entry id through `CONSILIUM_AGENT_ID`, so each backend script reads its own slice of `config.json`.
 
@@ -129,11 +131,63 @@ The `opencode` backend works with any provider/model that OpenCode supports. For
 
 Flip between them by editing the `model` field; the rest of the config stays the same.
 
+### Discovering OpenCode reasoning variants per model
+
+`opencode run --variant <effort>` is provider-specific — each model exposes its own set (or none). Don't guess: enumerate them from the CLI before setting `effort` in `config.json`.
+
+**One-liner — list every model with its supported variants:**
+
+```bash
+opencode models opencode --verbose 2>&1 | python3 -c '
+import sys, json
+lines = sys.stdin.read().split("\n")
+i = 0
+while i < len(lines):
+    line = lines[i].strip()
+    if line.startswith("opencode/") or line.startswith("opencode-go/"):
+        model_id, json_lines, depth, started = line, [], 0, False
+        i += 1
+        while i < len(lines):
+            s = lines[i]; json_lines.append(s)
+            for c in s:
+                if c == "{": depth += 1; started = True
+                elif c == "}": depth -= 1
+            i += 1
+            if started and depth == 0: break
+        try:
+            v = list(json.loads("\n".join(json_lines)).get("variants", {}).keys())
+            print(f"{model_id}\t{v}")
+        except Exception: pass
+    else:
+        i += 1
+'
+```
+
+Swap `opencode` for `opencode-go` (or any other provider id) to scan a different namespace; drop the provider arg to scan everything `opencode models` knows.
+
+**Interpreting the result:**
+
+- Non-empty list (e.g. `['low', 'medium', 'high', 'max']`) → set `effort` to the highest one you want.
+- `[]` → the model has no reasoning variants. `--variant` is silently ignored; setting `effort` in config is harmless but does nothing.
+- If a variant in your config isn't on the list, `opencode run` rejects the call. Re-enumerate after upgrading `opencode` — providers add/remove tiers between releases.
+
+**Snapshot of the currently configured opencode models** (re-run the one-liner if you change the set):
+
+| Model | Variants | `effort` in default config |
+|-------|----------|----------------------------|
+| `opencode/gemini-3.1-pro` | low, medium, high | `high` (no `max`) |
+| `opencode-go/deepseek-v4-pro` | low, medium, high, **max** | `max` |
+| `opencode-go/mimo-v2.5-pro` | low, medium, high | `high` (no `max`) |
+| `opencode-go/minimax-m2.7` | — | `high` (ignored) |
+| `opencode-go/kimi-k2.6` | — | `high` (ignored) |
+| `opencode-go/glm-5.1` | — | `high` (ignored) |
+
 ### Claude Code backend
 
 The `claude-code` backend shells out to `claude -p` (headless mode, see [docs](https://code.claude.com/docs/en/headless)). Useful when you want a second Claude in the consilium — e.g. Opus as analyst cross-checking Codex.
 
 - `model`: a shortname (`opus`, `sonnet`, `haiku`) or full id (`claude-opus-4-7`, `claude-sonnet-4-6`).
+- `effort`: maps to `claude --effort` — accepts `low`, `medium`, `high`, `xhigh`, `max`. Default config sets `max` for opus; omit the field to fall back to the CLI's default.
 - Runs in the caller's CWD with `--permission-mode plan` — Claude can freely `Read`/`Grep`/`Glob`/`Bash` read-only across the project, but cannot `Edit`/`Write`. Override with `CLAUDE_PERMISSION_MODE` only if you know what you're doing.
 - Authentication uses the same Claude Code credentials the CLI is already logged in with (`claude /login`).
 
@@ -351,6 +405,7 @@ What's happening?"
 - `OPENCODE_EFFORT`: Override OpenCode reasoning effort (default: config `effort` field, or `high`)
 - `CLAUDE_MODEL`: Override Claude Code model at runtime (alias like `opus` or full id)
 - `CLAUDE_PERMISSION_MODE`: Override Claude Code permission mode (default: `plan`)
+- `CLAUDE_EFFORT`: Override Claude Code reasoning effort (default: config `effort` field; CLI default if both unset). Levels: `low`, `medium`, `high`, `xhigh`, `max`.
 - `GEMINI_API_KEY`: Required for the `gemini-cli` backend (v1beta model access)
 - `GOOGLE_GENERATIVE_AI_API_KEY`: Required if the `opencode` backend uses `google/...` models
 - `AGENT_TIMEOUT`: Timeout seconds (default: 1200)
