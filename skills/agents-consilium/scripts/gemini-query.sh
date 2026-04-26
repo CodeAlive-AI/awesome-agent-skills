@@ -9,10 +9,14 @@
 #        ./gemini-query.sh --help
 #
 # Exit codes:
-#   0 — success, or agent disabled (skipped)
+#   0 — success
 #   4 — config error (missing GEMINI_API_KEY, unknown role, missing config)
 #   5 — usage error (missing prompt or unknown flag)
 #   other — propagated from Gemini CLI/API
+#
+# Note: this script always executes when invoked. The `enabled` field in
+# config.json is consulted only by `consensus-query.sh` to build the default
+# agent set; direct invocation ignores it.
 #
 set -euo pipefail
 
@@ -21,18 +25,13 @@ source "$SCRIPT_DIR/common.sh"
 source "$SCRIPT_DIR/config.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    sed -n '2,17p' "$0"
+    sed -n '2,20p' "$0"
     exit $EXIT_OK
 fi
 
 config_validate || exit $EXIT_CONFIG_ERROR
 
-AGENT_ID="gemini-cli"
-
-if ! config_is_enabled "$AGENT_ID"; then
-    echo -e "${YELLOW}[Gemini] Disabled in config ($CONSILIUM_CONFIG). Skipping.${NC}" >&2
-    exit $EXIT_OK
-fi
+AGENT_ID="${CONSILIUM_AGENT_ID:-gemini-cli}"
 
 MODEL="${GEMINI_MODEL:-$(config_get_field "$AGENT_ID" model)}"
 ROLE_ID="${CONSILIUM_ROLE_OVERRIDE:-$(config_get_field "$AGENT_ID" role)}"

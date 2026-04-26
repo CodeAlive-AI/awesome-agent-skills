@@ -23,7 +23,7 @@ The skill keeps each agent independent (no debate, no cross-contamination) and l
 - [Anti-Bias Protocol](#anti-bias-protocol)
 - [Agent Freedom and Read-Only Guardrails](#agent-freedom-and-read-only-guardrails)
 - [Configuration](#configuration)
-  - [OpenCode provider choice: Zen vs Google direct](#opencode-provider-choice-zen-vs-google-direct)
+  - [OpenCode provider choice: Zen vs Google direct vs OpenAI direct](#opencode-provider-choice-zen-vs-google-direct-vs-openai-direct)
   - [Claude Code backend](#claude-code-backend)
 - [Scripts](#scripts)
   - [Flags & Exit Codes](#flags--exit-codes)
@@ -115,21 +115,26 @@ Default config (`config.json`):
 - `opencode-go-mimo` (backend=opencode, model=opencode-go/mimo-v2.5-pro, role=lateral, effort=high) — **enabled**
 - `opencode-go-kimi` (backend=opencode, model=opencode-go/kimi-k2.6, role=analyst, effort=high) — **enabled**
 - `opencode-go-glm` (backend=opencode, model=opencode-go/glm-5.1, role=lateral, effort=high) — **enabled**
+- `opencode-openai` (backend=opencode, model=openai/gpt-5.5, role=analyst, effort=high) — **disabled** (reference entry; flip on if you want OpenAI direct)
 
-Effort policy: `max` is used wherever the model exposes it (`claude-code`, `opencode-go/deepseek-v4-pro`); `high` is the fallback for models that top out at `high` (`opencode/gemini-3.1-pro`, `opencode-go/mimo-v2.5-pro`) or expose no variants at all (`minimax`, `kimi`, `glm` — `effort` is set but ignored by the provider).
+Effort policy: `max` is used wherever the model exposes it (`claude-code`, `opencode-go/deepseek-v4-pro`); `high` is the fallback for models that top out at `high` (`opencode/gemini-3.1-pro`, `opencode-go/mimo-v2.5-pro`, `openai/gpt-5.5` if you don't want `xhigh`) or expose no variants at all (`minimax`, `kimi`, `glm` — `effort` is set but ignored by the provider).
 
 Multiple agents can share one backend — the dispatcher passes the entry id through `CONSILIUM_AGENT_ID`, so each backend script reads its own slice of `config.json`.
 
 Edit `config.json` to flip agents on/off or change models. Set `CONSILIUM_CONFIG=/path/to/custom.json` to use an override file.
 
-### OpenCode provider choice: Zen vs Google direct
+### OpenCode provider choice: Zen vs Google direct vs OpenAI direct
 
 The `opencode` backend works with any provider/model that OpenCode supports. For Gemini 3.1 Pro you have two options:
 
 - **Zen** (default): `"model": "opencode/gemini-3.1-pro"` — goes through OpenCode Zen. Works out of the box once `opencode providers login opencode` (or a valid Zen credential) is configured.
 - **Google direct**: `"model": "google/gemini-3.1-pro-preview"` — goes straight to Google's v1beta API. Requires `GOOGLE_GENERATIVE_AI_API_KEY` (OpenCode does **not** pick up `GEMINI_API_KEY` for this provider).
 
-Flip between them by editing the `model` field; the rest of the config stays the same.
+For OpenAI flagship models (GPT-5.5, GPT-5.4, etc.) there's a third path:
+
+- **OpenAI direct**: `"model": "openai/gpt-5.5"` — goes straight to OpenAI's API via the `openai/*` provider in OpenCode. Requires either an `opencode auth login` session for OpenAI (oauth) or `OPENAI_API_KEY` in the environment. The default config ships an `opencode-openai` entry **disabled** as a reference; flip `enabled=true` if you want a GPT-5.5 voice in the consilium. Variants: `none / low / medium / high / xhigh` — pick `xhigh` if you want the heaviest reasoning, otherwise `high` is the safe default.
+
+Flip between providers by editing the `model` field; the rest of the config stays the same.
 
 ### Discovering OpenCode reasoning variants per model
 
@@ -181,6 +186,7 @@ Swap `opencode` for `opencode-go` (or any other provider id) to scan a different
 | `opencode-go/minimax-m2.7` | — | `high` (ignored) |
 | `opencode-go/kimi-k2.6` | — | `high` (ignored) |
 | `opencode-go/glm-5.1` | — | `high` (ignored) |
+| `openai/gpt-5.5` | none, low, medium, high, xhigh | `high` (entry **disabled** by default) |
 
 ### Claude Code backend
 
@@ -199,7 +205,9 @@ All scripts in `scripts/` directory. The skill auto-detects its install location
 
 ### Single Agent Queries
 
-Each per-agent script is a no-op (exit 0) when its agent id is `enabled=false` in config, so scripts are safe to call unconditionally.
+Per-agent scripts always execute when invoked. The `enabled` field in `config.json` is consulted **only** by `consensus-query.sh` to build the default agent set (when neither `-a` nor `-x` is given). Direct invocation of a per-agent script ignores `enabled` — that's by design (single source of truth for the run/skip decision lives in the dispatcher).
+
+When `-a`/`-x` causes `consensus-query.sh` to run an `enabled=false` agent, the dispatcher emits a stderr line like `[<Label>] forced via --agents (enabled=false in config)` so the override is visible.
 
 ```bash
 # Codex (analyst by default)
@@ -263,7 +271,7 @@ Exit codes (stable across all scripts):
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success, or agent disabled/skipped cleanly |
+| `0` | Success (all queried agents replied; or, for `consensus-query.sh`, the active agent set may be smaller than the configured set if some are disabled or filtered) |
 | `2` | **Consensus only:** partial failure (≥1 succeeded, ≥1 failed) |
 | `3` | **Consensus only:** every queried agent failed |
 | `4` | Config error (missing CLI, invalid config, unknown role/agent id) |
@@ -408,12 +416,13 @@ What's happening?"
 - `CLAUDE_EFFORT`: Override Claude Code reasoning effort (default: config `effort` field; CLI default if both unset). Levels: `low`, `medium`, `high`, `xhigh`, `max`.
 - `GEMINI_API_KEY`: Required for the `gemini-cli` backend (v1beta model access)
 - `GOOGLE_GENERATIVE_AI_API_KEY`: Required if the `opencode` backend uses `google/...` models
+- `OPENAI_API_KEY`: Required if the `opencode` backend uses `openai/...` models and OpenCode is not already logged in via `opencode auth login`
 - `AGENT_TIMEOUT`: Timeout seconds (default: 1200)
 
 ## Prerequisites
 
 - [Codex CLI](https://github.com/openai/codex) installed and authenticated (`codex --version`) — for the `codex-cli` backend
-- [OpenCode CLI](https://opencode.ai) installed (`opencode --version`) — for the `opencode` backend. For Zen models (`opencode/...`) run `opencode providers login opencode` once; for Google direct models (`google/...`) set `GOOGLE_GENERATIVE_AI_API_KEY`.
+- [OpenCode CLI](https://opencode.ai) installed (`opencode --version`) — for the `opencode` backend. For Zen models (`opencode/...`) run `opencode providers login opencode` once; for Google direct models (`google/...`) set `GOOGLE_GENERATIVE_AI_API_KEY`; for OpenAI direct models (`openai/...`) either run `opencode auth login` and pick OpenAI, or set `OPENAI_API_KEY`.
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed (`gemini --version`) — for the `gemini-cli` backend (optional; falls back to direct API)
 - [Claude Code CLI](https://docs.claude.com/claude-code) installed and logged in (`claude --version`, `claude /login`) — for the `claude-code` backend
 - `GEMINI_API_KEY` environment variable — required only when `gemini-cli` backend is enabled (get key at https://ai.google.dev/gemini-api/docs/api-key)

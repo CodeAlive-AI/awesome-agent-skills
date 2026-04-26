@@ -86,6 +86,15 @@
       "effort": "high",
       "role": "lateral",
       "label": "OC-Go GLM-5.1"
+    },
+    "opencode-openai": {
+      "_comment": "OpenAI direct via the opencode backend. Disabled by default — flip enabled=true to use. Requires `opencode auth login` for OpenAI (oauth) or OPENAI_API_KEY in the environment.",
+      "enabled": false,
+      "backend": "opencode",
+      "model": "openai/gpt-5.5",
+      "effort": "high",
+      "role": "analyst",
+      "label": "OC OpenAI GPT-5.5"
     }
   }
 }

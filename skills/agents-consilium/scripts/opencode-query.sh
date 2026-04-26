@@ -15,10 +15,16 @@
 #                      Defaults to the "effort" field in config.json, or "high" if unset.
 #
 # Exit codes:
-#   0 — success, or agent disabled (skipped)
+#   0 — success
 #   4 — config error (opencode CLI missing, unknown role, missing config)
 #   5 — usage error (missing prompt or unknown flag)
 #   other — propagated from opencode
+#
+# Note: this script always executes when invoked. The `enabled` field in
+# config.json is consulted only by `consensus-query.sh` to build the default
+# agent set; direct invocation ignores it. To skip an agent in the default
+# consensus, set `enabled: false` in config.json — that does NOT prevent
+# direct invocation here, by design (single source of truth).
 #
 set -euo pipefail
 
@@ -27,18 +33,13 @@ source "$SCRIPT_DIR/common.sh"
 source "$SCRIPT_DIR/config.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    sed -n '2,21p' "$0"
+    sed -n '2,28p' "$0"
     exit $EXIT_OK
 fi
 
 config_validate || exit $EXIT_CONFIG_ERROR
 
 AGENT_ID="${CONSILIUM_AGENT_ID:-opencode}"
-
-if ! config_is_enabled "$AGENT_ID"; then
-    echo -e "${YELLOW}[OpenCode] Disabled in config ($CONSILIUM_CONFIG). Skipping.${NC}" >&2
-    exit $EXIT_OK
-fi
 
 MODEL="${OPENCODE_MODEL:-$(config_get_field "$AGENT_ID" model)}"
 ROLE_ID="${CONSILIUM_ROLE_OVERRIDE:-$(config_get_field "$AGENT_ID" role)}"

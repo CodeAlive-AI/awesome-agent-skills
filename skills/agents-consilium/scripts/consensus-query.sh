@@ -17,6 +17,11 @@
 #                    Default is a human-readable markdown report.
 #   --list-agents    Print the current plan (all configured agents, enabled/disabled,
 #                    with model/role/backend-available) as XML and exit 0.
+#   --prompt-file <path>
+#                    Send the file's contents to every agent VERBATIM. No principles,
+#                    no role injection, no output template — exactly the prompt you wrote.
+#                    Use this for benchmark / eval runs where wrapper-level differences
+#                    between agents would confound results.
 #   -a, --agents <ID|GLOB>
 #                    Override the active agent set with this id or glob (e.g. 'opencode-go-*').
 #                    Repeatable; comma-separated values also accepted (-a codex,opencode).
@@ -47,6 +52,7 @@ source "$SCRIPT_DIR/config.sh"
 OUTPUT_FORMAT="markdown"  # markdown | xml
 LIST_ONLY=false
 PROMPT=""
+PROMPT_FILE=""
 INCLUDE_PATTERNS=()
 EXCLUDE_PATTERNS=()
 
@@ -54,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --xml)          OUTPUT_FORMAT="xml"; shift ;;
         --list-agents)  LIST_ONLY=true; shift ;;
+        --prompt-file)  shift; PROMPT_FILE="${1:-}"; shift ;;
         -a|--agents|--agent)
                         shift
                         IFS=',' read -ra _parts <<< "${1:-}"
@@ -65,12 +72,27 @@ while [[ $# -gt 0 ]]; do
                         EXCLUDE_PATTERNS+=("${_parts[@]}")
                         shift
                         ;;
-        -h|--help)      sed -n '2,36p' "$0"; exit $EXIT_OK ;;
+        -h|--help)      sed -n '2,42p' "$0"; exit $EXIT_OK ;;
         --)             shift; PROMPT="${1:-}"; break ;;
         -*)             echo -e "${RED}Error: unknown flag: $1${NC}" >&2; exit $EXIT_USAGE ;;
         *)              PROMPT="$1"; shift; break ;;
     esac
 done
+
+# --prompt-file: load file content as the prompt and switch backends to RAW mode
+# (no principles / role / template wrapping).
+if [[ -n "$PROMPT_FILE" ]]; then
+    if [[ ! -f "$PROMPT_FILE" ]]; then
+        echo -e "${RED}Error: prompt file not found: $PROMPT_FILE${NC}" >&2
+        exit $EXIT_USAGE
+    fi
+    if [[ -n "$PROMPT" ]]; then
+        echo -e "${RED}Error: cannot combine --prompt-file with a positional prompt${NC}" >&2
+        exit $EXIT_USAGE
+    fi
+    PROMPT="$(cat "$PROMPT_FILE")"
+    export CONSILIUM_RAW_PROMPT=1
+fi
 
 # Env-var fallbacks (only when no CLI flag of the same kind was given).
 if [[ ${#INCLUDE_PATTERNS[@]} -eq 0 && -n "${CONSILIUM_AGENTS:-}" ]]; then
@@ -169,6 +191,13 @@ for agent in "${ENABLED_AGENTS[@]}"; do
     MODELS+=("$model")
     ROLES+=("$role")
     BACKENDS+=("$backend")
+
+    # Loud override notice: an agent with enabled=false reaches this loop
+    # only when --agents/--exclude pulled it in. Print it so the override
+    # is visible (AX: no silent override).
+    if ! config_is_enabled "$agent"; then
+        echo -e "${YELLOW}[${label}] forced via --agents (enabled=false in config)${NC}" >&2
+    fi
 
     if [[ -z "$script" || ! -x "$script" ]]; then
         echo -e "${RED}Skipping '$agent': unknown/unavailable backend '$backend'${NC}" >&2
