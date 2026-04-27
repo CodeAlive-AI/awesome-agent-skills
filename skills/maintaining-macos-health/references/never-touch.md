@@ -179,6 +179,9 @@ These are inside Application Support but are NOT regenerable. Only the cache-fam
 | Claude Code | `~/Library/Application Support/Claude/vm_bundles/claudevm.bundle/` | **9.7 GB Linux sandbox runtime — active, never delete** |
 | Voice Memos | `~/Library/Application Support/com.apple.voicememos/Recordings/` | User audio recordings |
 | Notes | `~/Library/Group Containers/group.com.apple.notes/` | Notes content + attachments |
+| cmux | `~/.cmuxterm/` | Claude-hook session store (`claude-hook-sessions.json`) — maps Claude session IDs to cmux workspaces. Delete = lose tab→session mapping. |
+| cmux | `~/Library/Saved Application State/com.cmuxterm.app.savedState/` | Open tabs, split layout, scrollback. Delete = next launch starts with empty window, all tabs gone. **Common loss vector** since `Saved Application State` is a generic Mac-cleanup target. |
+| cmux | `~/.config/cmux/`, `~/Library/Application Support/cmux/`, `~/Library/Application Support/com.cmuxterm.app/` | Settings, runtime data, telemetry. Delete only if fully reinstalling. |
 
 When in doubt for an Application Support folder: only Cache/CodeCache/GPUCache/Service Worker subdirs are safe. Everything else, ask.
 
