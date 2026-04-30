@@ -12,7 +12,11 @@
 #   OPENCODE_MODEL   — override model from config
 #   OPENCODE_AGENT   — override built-in opencode agent (default: plan)
 #   OPENCODE_EFFORT  — provider-specific reasoning effort (e.g. high, max, minimal).
-#                      Defaults to the "effort" field in config.json, or "high" if unset.
+#                      Defaults to the "effort" field in config.json. If neither is
+#                      set, or the value is "none"/empty, no --variant is passed
+#                      and the provider's default is used. Models with no variants
+#                      (e.g. qwen3.6-plus) MUST run without --variant; passing one
+#                      causes opencode to reject the call (silent hang).
 #
 # Exit codes:
 #   0 — success
@@ -47,7 +51,12 @@ LABEL="$(config_get_field "$AGENT_ID" label)"
 LABEL="${LABEL:-OpenCode}"
 BUILTIN_AGENT="${OPENCODE_AGENT:-plan}"
 EFFORT="${OPENCODE_EFFORT:-$(config_get_field "$AGENT_ID" effort)}"
-EFFORT="${EFFORT:-high}"
+# "none" or empty → omit --variant entirely (provider default). Required for
+# models whose variants list is empty (e.g. opencode-go/qwen3.6-plus); passing
+# any --variant to such a model causes opencode to silently reject the call.
+if [[ "$EFFORT" == "none" ]]; then
+    EFFORT=""
+fi
 
 if ! ROLE_PROMPT="$(get_role_prompt "$ROLE_ID")"; then
     echo -e "${RED}Error: unknown role '$ROLE_ID' for opencode in config${NC}" >&2
@@ -63,16 +72,28 @@ fi
 PROMPT="${1:-}"
 CONTEXT_FILE="${2:-}"
 
+# If no positional prompt was given but stdin has content, treat stdin as
+# the prompt itself (so `script.sh < prompt.txt` works). Reading it here
+# also stops build_prompt from later re-adding the same content as a
+# `--- Input ---` context block — that would duplicate the prompt.
+# Dual case (PROMPT set + stdin) is unchanged: build_prompt still reads
+# stdin and appends it as context.
+if [[ -z "$PROMPT" && ! -t 0 ]]; then
+    PROMPT=$(cat)
+    [[ -n "$PROMPT" ]] && echo -e "${YELLOW}[note] no positional prompt; using stdin as the prompt${NC}" >&2
+fi
+
 if [[ -z "$PROMPT" ]]; then
     echo -e "${RED}Error: No prompt provided${NC}" >&2
     echo "Usage: $0 \"prompt\" [context_file]" >&2
+    echo "       $0 < prompt.txt" >&2
     exit $EXIT_USAGE
 fi
 
 export FULL_PROMPT
 FULL_PROMPT=$(build_prompt "$ROLE_PROMPT" "$PROMPT" "$CONTEXT_FILE")
 
-echo -e "${YELLOW}[${LABEL}] Querying ${MODEL} via opencode (agent=${BUILTIN_AGENT}, effort=${EFFORT}, role=${ROLE_ID})...${NC}" >&2
+echo -e "${YELLOW}[${LABEL}] Querying ${MODEL} via opencode (agent=${BUILTIN_AGENT}, effort=${EFFORT:-default}, role=${ROLE_ID})...${NC}" >&2
 
 # Runs in the caller's CWD so opencode can freely inspect the real project.
 # Writes are blocked by `--agent plan` (opencode's built-in read-only agent).

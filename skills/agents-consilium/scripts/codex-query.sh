@@ -37,6 +37,7 @@ ROLE_ID="${CONSILIUM_ROLE_OVERRIDE:-$(config_get_field "$AGENT_ID" role)}"
 LABEL="$(config_get_field "$AGENT_ID" label)"
 LABEL="${LABEL:-Codex}"
 EFFORT="${CODEX_EFFORT:-$(config_get_field "$AGENT_ID" effort)}"
+EFFORT="${EFFORT:-high}"
 
 if ! ROLE_PROMPT="$(get_role_prompt "$ROLE_ID")"; then
     echo -e "${RED}Error: unknown role '$ROLE_ID' for codex in config${NC}" >&2
@@ -52,16 +53,28 @@ fi
 PROMPT="${1:-}"
 CONTEXT_FILE="${2:-}"
 
+# If no positional prompt was given but stdin has content, treat stdin as
+# the prompt itself (so `script.sh < prompt.txt` works). Reading it here
+# also stops build_prompt from later re-adding the same content as a
+# `--- Input ---` context block — that would duplicate the prompt.
+# Dual case (PROMPT set + stdin) is unchanged: build_prompt still reads
+# stdin and appends it as context.
+if [[ -z "$PROMPT" && ! -t 0 ]]; then
+    PROMPT=$(cat)
+    [[ -n "$PROMPT" ]] && echo -e "${YELLOW}[note] no positional prompt; using stdin as the prompt${NC}" >&2
+fi
+
 if [[ -z "$PROMPT" ]]; then
     echo -e "${RED}Error: No prompt provided${NC}" >&2
     echo "Usage: $0 \"prompt\" [context_file]" >&2
+    echo "       $0 < prompt.txt" >&2
     exit $EXIT_USAGE
 fi
 
 export FULL_PROMPT
 FULL_PROMPT=$(build_prompt "$ROLE_PROMPT" "$PROMPT" "$CONTEXT_FILE")
 
-echo -e "${YELLOW}[${LABEL}] Querying ${MODEL} (role=${ROLE_ID}, effort=${EFFORT:-default})...${NC}" >&2
+echo -e "${YELLOW}[${LABEL}] Querying ${MODEL} (role=${ROLE_ID}, effort=${EFFORT})...${NC}" >&2
 
 export MODEL
 export CODEX_EFFORT_RESOLVED="$EFFORT"
@@ -78,14 +91,41 @@ run_codex() {
     if [[ -n "$CODEX_EFFORT_RESOLVED" ]]; then
         effort_args=(-c "model_reasoning_effort=\"$CODEX_EFFORT_RESOLVED\"")
     fi
+    local nomcp_args=()
+    # CONSILIUM_CODEX_NO_MCP=1 → bypass ~/.codex/config.toml entirely. Use this
+    # for benchmark / eval runs where global MCP servers (e.g. oh-my-codex) can
+    # deadlock at init. See codex-hang-postmortem in docs.
+    if [[ -n "${CONSILIUM_CODEX_NO_MCP:-}" ]]; then
+        nomcp_args=(--ignore-user-config)
+    fi
     codex -a never "${effort_args[@]}" exec \
+        "${nomcp_args[@]}" \
         --model "$MODEL" \
         --sandbox read-only \
         --skip-git-repo-check \
         --ephemeral \
         -o "$CODEX_TMPOUT" \
-        "$FULL_PROMPT" >/dev/null 2>"$codex_stderr"
-    local exit_code=$?
+        "$FULL_PROMPT" >/dev/null 2>"$codex_stderr" &
+    local codex_pid=$!
+    # Liveness watchdog: 0-byte $CODEX_TMPOUT after CODEX_FIRST_BYTE_DEADLINE
+    # ⇒ stuck (pre-first-byte hang). Distinct from AGENT_TIMEOUT, which gates
+    # legitimate long reasoning.
+    (
+        local elapsed=0
+        while kill -0 "$codex_pid" 2>/dev/null; do
+            sleep 10; elapsed=$((elapsed+10))
+            if [[ $elapsed -ge $CODEX_FIRST_BYTE_DEADLINE ]] && [[ ! -s "$CODEX_TMPOUT" ]]; then
+                echo "[Codex] watchdog: 0-byte output after ${elapsed}s, killing pid $codex_pid" >&2
+                kill -TERM "$codex_pid" 2>/dev/null
+                sleep 5
+                kill -KILL "$codex_pid" 2>/dev/null
+                exit 0
+            fi
+        done
+    ) &
+    local watchdog_pid=$!
+    wait "$codex_pid"; local exit_code=$?
+    kill "$watchdog_pid" 2>/dev/null; wait "$watchdog_pid" 2>/dev/null
     if [[ $exit_code -ne 0 ]]; then
         echo "[Codex] Error (exit $exit_code):" >&2
         cat "$codex_stderr" >&2

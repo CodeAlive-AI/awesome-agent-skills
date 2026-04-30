@@ -5,12 +5,18 @@
 # Usage:
 #   consensus-query.sh "question"
 #   consensus-query.sh --xml "question"
-#   cat file.ts | consensus-query.sh "review this code"
+#   cat file.ts | consensus-query.sh "review this code"   # prompt + stdin context
+#   consensus-query.sh < prompt.txt                       # stdin = prompt itself
+#   consensus-query.sh --prompt-file prompt.txt           # same, raw mode
 #   consensus-query.sh -a codex -a opencode-go-kimi "question"
 #   consensus-query.sh -a 'opencode-go-*' "question"
 #   consensus-query.sh -x codex "question"
 #   consensus-query.sh --list-agents        # dump plan as XML, no queries
 #   consensus-query.sh --help
+#
+# The prompt is normally a POSITIONAL argument. If you don't pass one,
+# stdin (if present) is used as the prompt instead. When both are given,
+# stdin is treated as context appended to the prompt.
 #
 # Options:
 #   --xml            Emit responses as <consilium-report> XML (stable for agent consumers).
@@ -72,7 +78,7 @@ while [[ $# -gt 0 ]]; do
                         EXCLUDE_PATTERNS+=("${_parts[@]}")
                         shift
                         ;;
-        -h|--help)      sed -n '2,42p' "$0"; exit $EXIT_OK ;;
+        -h|--help)      sed -n '2,50p' "$0"; exit $EXIT_OK ;;
         --)             shift; PROMPT="${1:-}"; break ;;
         -*)             echo -e "${RED}Error: unknown flag: $1${NC}" >&2; exit $EXIT_USAGE ;;
         *)              PROMPT="$1"; shift; break ;;
@@ -110,9 +116,28 @@ if $LIST_ONLY; then
     exit $EXIT_OK
 fi
 
+# Capture piped input once. We read stdin BEFORE the PROMPT check so that
+# `consensus-query.sh < prompt.txt` and `cat prompt.txt | consensus-query.sh`
+# work as expected — without a positional, stdin is the prompt itself.
+# When BOTH a positional prompt and stdin are present, stdin keeps its
+# original meaning (context to the prompt) — that's the existing pattern
+# `cat code.py | consensus-query.sh "review this"`.
+STDIN_CONTENT=""
+if [[ ! -t 0 ]]; then
+    STDIN_CONTENT=$(cat)
+fi
+
+if [[ -z "$PROMPT" && -n "$STDIN_CONTENT" ]]; then
+    PROMPT="$STDIN_CONTENT"
+    STDIN_CONTENT=""
+    echo -e "${YELLOW}[note] no positional prompt; using stdin as the prompt${NC}" >&2
+fi
+
 if [[ -z "$PROMPT" ]]; then
     echo -e "${RED}Error: No prompt provided${NC}" >&2
     echo "Usage: $0 [--xml] \"question\"" >&2
+    echo "       $0 [--xml] < prompt.txt" >&2
+    echo "       $0 [--xml] --prompt-file path.txt" >&2
     exit $EXIT_USAGE
 fi
 
@@ -166,12 +191,6 @@ if [[ ${#ENABLED_AGENTS[@]} -eq 0 ]]; then
         echo -e "${RED}Error: no agents enabled in $CONSILIUM_CONFIG${NC}" >&2
     fi
     exit $EXIT_CONFIG_ERROR
-fi
-
-# Capture piped input if any.
-STDIN_CONTENT=""
-if [[ ! -t 0 ]]; then
-    STDIN_CONTENT=$(cat)
 fi
 
 echo -e "${CYAN}  CONSENSUS QUERY — ${#ENABLED_AGENTS[@]} agent(s) in parallel: ${ENABLED_AGENTS[*]}${NC}" >&2
@@ -239,8 +258,16 @@ for i in "${!AGENT_IDS[@]}"; do
     code=0
     wait "$pid" || code=$?
     EXITS[$i]="$code"
-    if [[ $code -eq 0 ]]; then
+    # Empty stdout with exit 0 is never a real answer. We compare bytes, not
+    # `-s`, because run_with_timeout always emits two newlines as a header
+    # before the actual response body — so the file is never strictly zero.
+    out_bytes=$(wc -c < "${OUT_FILES[$i]}" | tr -d ' ')
+    if [[ $code -eq 0 && $out_bytes -gt 10 ]]; then
         STATUSES[$i]="ok"
+    elif [[ $code -eq 0 ]]; then
+        EXITS[$i]=66  # EX_NOINPUT
+        STATUSES[$i]="failed"
+        echo -e "${RED}[${LABELS[$i]}] empty response (${out_bytes} bytes), marking failed${NC}" >&2
     else
         STATUSES[$i]="failed"
     fi

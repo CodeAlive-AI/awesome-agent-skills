@@ -52,9 +52,21 @@ fi
 PROMPT="${1:-}"
 CONTEXT_FILE="${2:-}"
 
+# If no positional prompt was given but stdin has content, treat stdin as
+# the prompt itself (so `script.sh < prompt.txt` works). Reading it here
+# also stops build_prompt from later re-adding the same content as a
+# `--- Input ---` context block — that would duplicate the prompt.
+# Dual case (PROMPT set + stdin) is unchanged: build_prompt still reads
+# stdin and appends it as context.
+if [[ -z "$PROMPT" && ! -t 0 ]]; then
+    PROMPT=$(cat)
+    [[ -n "$PROMPT" ]] && echo -e "${YELLOW}[note] no positional prompt; using stdin as the prompt${NC}" >&2
+fi
+
 if [[ -z "$PROMPT" ]]; then
     echo -e "${RED}Error: No prompt provided${NC}" >&2
     echo "Usage: $0 \"prompt\" [context_file]" >&2
+    echo "       $0 < prompt.txt" >&2
     exit $EXIT_USAGE
 fi
 
