@@ -53,6 +53,32 @@ git diff HEAD | scripts/code-review.sh --xml --diff
 
 Edit `config.json` to enable/disable agents or swap models. See `config.example.json` for a fuller template with multiple backends.
 
+### Passing the prompt
+
+The prompt is a **positional** argument. Three ways to pass it, pick whichever is convenient:
+
+```bash
+# (a) Inline string — best for short prompts.
+scripts/consensus-query.sh --xml "review this design"
+
+# (b) From a file via stdin — best for long multi-line prompts.
+#     With NO positional argument, stdin is treated as the prompt.
+scripts/consensus-query.sh --xml < prompt.txt
+cat prompt.txt | scripts/consensus-query.sh --xml
+
+# (c) From a file via flag — same as (b) but uses RAW mode
+#     (no role/principles/template wrapping; agents see the file verbatim).
+#     Use this for benchmarks/evals where wrapper differences would skew results.
+scripts/consensus-query.sh --xml --prompt-file prompt.txt
+```
+
+**When BOTH a positional prompt and stdin are given**, stdin is appended to the prompt as `--- Input ---` context. That is the existing pattern for piping a file under review:
+
+```bash
+cat src/auth.py | scripts/consensus-query.sh "review this code"
+#       └── stdin = context ────┘   └── positional = the prompt ─┘
+```
+
 ## Design Principles
 
 **Intellectual independence**: Agents are instructed to think from first principles, challenge the framing of questions, and propose alternatives not mentioned in the query. They are free thinkers within the given context, not yes-men.
@@ -193,7 +219,7 @@ Swap `opencode` for `opencode-go` (or any other provider id) to scan a different
 The `claude-code` backend shells out to `claude -p` (headless mode, see [docs](https://code.claude.com/docs/en/headless)). Useful when you want a second Claude in the consilium — e.g. Opus as analyst cross-checking Codex.
 
 - `model`: a shortname (`opus`, `sonnet`, `haiku`) or full id (`claude-opus-4-7`, `claude-sonnet-4-6`).
-- `effort`: maps to `claude --effort` — accepts `low`, `medium`, `high`, `xhigh`, `max`. Default config sets `max` for opus; omit the field to fall back to the CLI's default.
+- `effort`: maps to `claude --effort` — accepts `low`, `medium`, `high`, `xhigh`, `max`. Default config sets `max` for opus; omit the field to fall back to the skill's default of `max` for the claude-code backend.
 - Runs in the caller's CWD with `--permission-mode plan` — Claude can freely `Read`/`Grep`/`Glob`/`Bash` read-only across the project, but cannot `Edit`/`Write`. Override with `CLAUDE_PERMISSION_MODE` only if you know what you're doing.
 - Authentication uses the same Claude Code credentials the CLI is already logged in with (`claude /login`).
 
@@ -413,7 +439,8 @@ What's happening?"
 - `OPENCODE_EFFORT`: Override OpenCode reasoning effort (default: config `effort` field, or `high`)
 - `CLAUDE_MODEL`: Override Claude Code model at runtime (alias like `opus` or full id)
 - `CLAUDE_PERMISSION_MODE`: Override Claude Code permission mode (default: `plan`)
-- `CLAUDE_EFFORT`: Override Claude Code reasoning effort (default: config `effort` field; CLI default if both unset). Levels: `low`, `medium`, `high`, `xhigh`, `max`.
+- `CLAUDE_EFFORT`: Override Claude Code reasoning effort (default: config `effort` field, or `max` if both unset). Levels: `low`, `medium`, `high`, `xhigh`, `max`.
+- `CODEX_EFFORT`: Override Codex reasoning effort (default: config `effort` field, or `high` if both unset). Levels: `minimal`, `low`, `medium`, `high`, `xhigh`.
 - `GEMINI_API_KEY`: Required for the `gemini-cli` backend (v1beta model access)
 - `GOOGLE_GENERATIVE_AI_API_KEY`: Required if the `opencode` backend uses `google/...` models
 - `OPENAI_API_KEY`: Required if the `opencode` backend uses `openai/...` models and OpenCode is not already logged in via `opencode auth login`
