@@ -16,9 +16,19 @@ These skills are **not tied to CodeAlive** — they work with any agent that sup
 | [fetch-url-as-markdown](skills/fetch-url-as-markdown/) | URL → clean Markdown via local trafilatura (real-browser UA, anti-stub guards, structured exit codes), with Exa MCP as a fallback for JS-rendered or anti-bot pages. Drop-in replacement for the built-in WebFetch | `npx skills add CodeAlive-AI/awesome-agent-skills@fetch-url-as-markdown -g -y` |
 | [maintaining-macos-health](skills/maintaining-macos-health/) | macOS disk cleanup + dev-machine optimization + proactive health alerting. Triage flow for kernel panic / watchdog timeout / `vm-compressor-space-shortage` / Jetsam events. Tiered cleanup playbook (zero-risk → discuss-first), Mole-style safety guards, and a noise-resistant LaunchAgent alerter (3 CRITICAL-only triggers, hysteresis, calibration window). Apple Silicon Mac focus | `npx skills add CodeAlive-AI/awesome-agent-skills@maintaining-macos-health -g -y` |
 
+## Hooks
+
+Standalone agent-safety hooks that don't fit the skills standard — typically because they have to live inside Claude Code's hook protocol or run as compiled binaries.
+
+| Hook | Description | Install |
+|------|-------------|---------|
+| [optimal-safety-hooks](hooks/optimal-safety-hooks/) | `bash-guard` — a Claude Code `PreToolUse:Bash` safety hook in Go. Real Bash AST parsing via [`mvdan.cc/sh`](https://github.com/mvdan/sh) to minimise false positives (heredocs, single-quoted prose, executor wrappers like `sudo`/`env`/`xargs`/`find -delete`/`bash -c`/`eval`/`ssh`/pipe-to-shell). Catastrophic-path matrix with safe-path carve-outs. **Only emits `ask`, never `deny`** — agents trivially bypass `deny` by rephrasing. Covers `rm`/`unlink`/`rmdir`/`shred`, ORM migrations (Supabase + 9 others), and infra (kubectl/gcloud/helm/docker/mongo/terraform/`git push -f`/curl-vs-OpenSearch) | `cd hooks/optimal-safety-hooks && ./install.sh --shadow` |
+
 ## Contributing
 
 Each skill lives in `skills/<skill-name>/` with a `SKILL.md` at the root. See any existing skill for the structure.
+
+Each hook lives in `hooks/<hook-name>/` with its own `README.md` and install script.
 
 ## License
 
