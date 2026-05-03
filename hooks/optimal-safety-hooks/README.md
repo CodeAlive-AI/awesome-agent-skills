@@ -39,9 +39,30 @@ bash-guard descends into all of those, classifies every span (`Executed` / `Data
 | **rm via wrappers** | `sudo rm`, `env FOO=bar rm`, `xargs rm`, `find -delete`, `find -exec rm`, `bash -c "rm ..."`, `eval "rm ..."`, `ssh host "rm ..."`, `chroot newroot rm`, `timeout 5 rm`, `nohup rm`, `time rm`, … |
 | **rm via pipe-to-shell** | `echo "rm -rf /" \| bash`, `cat script.sh \| sh`, etc. |
 | **supabase** | `supabase db push`, `db reset --linked`, `migration repair`, `--db-url <prod>`; ORM migration verbs (`alembic upgrade`, `manage.py migrate`, `prisma migrate deploy`, `drizzle-kit push`, `knex migrate`, `sequelize db:migrate`, `flyway migrate`, `liquibase update`, `rails db:migrate`, `rake db:migrate`, `typeorm migration:run`, `goose up`) |
-| **infra** | `kubectl delete/apply/patch`, destructive `gcloud compute/storage/...`, `helm install/upgrade/uninstall`, `docker rm/system prune`, destructive Mongo (`drop`, `deleteMany`, `mongorestore`, `mongodump`), `terraform/tofu apply/destroy`, `gsutil rm`, `git push -f / --force`, `curl -X DELETE/POST/PUT` against OpenSearch/Elasticsearch URLs |
+| **infra** | `kubectl delete/apply/patch`, destructive `gcloud compute/storage/...`, `helm install/upgrade/uninstall`, `docker rm/system prune`, destructive Mongo (`drop`, `deleteMany`, `mongorestore`, `mongodump`), `terraform/tofu apply/destroy`, `gsutil rm`, `git push -f / --force` |
+| **hyperscaler clouds** | `aws <svc> delete-* / terminate-* / destroy-* / purge-* / remove-* / deregister-* / revoke-*`, `aws s3 rm`, `az ... delete / purge`, `oci ... delete / terminate`, `ibmcloud ... delete / *-rm / *-delete` |
+| **paas** | `railway`, `fly` / `flyctl`, `heroku`, `vercel`, `doctl`, `netlify`, `linode-cli` with destructive verbs (`delete`, `destroy`, `remove`, `rm`, `down`, `reset`) and Heroku/Netlify-style colon-suffix forms (`apps:destroy`, `pg:reset`, `sites:delete`, `addons:destroy`, `domains:remove`, `env:unset`) |
+| **DB clients** | `psql` / `mysql` / `mariadb` with inline SQL containing `DROP DATABASE/TABLE/SCHEMA/...`, `TRUNCATE`, `DELETE FROM`, `ALTER ... DROP`; `redis-cli FLUSHALL / FLUSHDB / SHUTDOWN / MIGRATE` |
+| **cloud control-plane curl** | Mutating `curl -X POST/PUT/PATCH/DELETE` to known cloud API hostnames (Railway, Fly, Heroku, Vercel, Netlify, DigitalOcean, Linode, `googleapis.com`, `amazonaws.com`, `management.azure.com`, `oraclecloud.com`, `cloud.ibm.com`); GraphQL bodies containing `mutation` |
+| **search-engine curl** | Mutating `curl -X POST/PUT/PATCH/DELETE` against OpenSearch/Elasticsearch URLs (`:9200`, `:9300`, hostname matches) |
 
 The rule set is open: a new rule is one Go file implementing the `Rule` interface (`Name() / Triggers() / Check()`), plus ≥3 golden-table fixtures. See [`src/CLAUDE.md`](src/CLAUDE.md) for the maintenance protocol.
+
+### PocketOS-class coverage
+
+In April 2026 a Cursor agent on Claude Opus 4.6 wiped the production database of [PocketOS](https://neuraltrust.ai/blog/pocketos-railway-agent) by issuing one POST request to Railway's GraphQL `volumeDelete` mutation. The shape of that incident — a vendor token found in a repo, used by an autonomous agent to invoke a destructive API endpoint with no server-side confirmation — generalises across every PaaS and hyperscaler. bash-guard cannot replace platform-level guardrails (scoped tokens, server-side gates, off-volume backups), but it covers the bash channels through which this class of attack flows:
+
+| Channel | Coverage |
+|---|---|
+| Vendor CLI (`railway volume delete`, `fly volumes destroy`, `heroku pg:reset`, `aws ec2 delete-volume`, `az group delete`) | `paas` + `infra` rules |
+| Direct API (`curl -X POST https://backboard.railway.com/graphql/v2 -d '{"query":"mutation{volumeDelete}"}'`) | `infra.cloud_api_mutation` + `infra.graphql_mutation` |
+| DB-level (`psql -c "DROP DATABASE app"`, `redis-cli FLUSHALL`) | `db_client` rule |
+
+What bash-guard still does **not** cover, and what your defence-in-depth needs alongside it:
+
+- **MCP-tool calls.** If the agent invokes Railway / Fly / Heroku via an MCP server (Railway markets a hosted MCP endpoint), the destructive call goes through `PreToolUse:mcp__*`, not `PreToolUse:Bash`. Out of scope.
+- **Direct SDK calls** (`import boto3; ec2.delete_volume(...)`) executed from a script the agent runs are visible only as `python script.py` to the hook — content of the Python file is not parsed.
+- **Token scope.** bash-guard cannot tell whether the token in `$RAILWAY_TOKEN` is scoped to staging or production. That is a vendor-side IAM problem.
 
 What it explicitly does **not** trigger on:
 
@@ -103,11 +124,13 @@ Switching modes later is the same command — `settings.json` is re-read on ever
 | `src/safe_paths.go` | realpath + lstat-based path classification with POSIX rm trailing-slash semantics, catastrophic-prefix matrix, $HOME carve-outs. |
 | `src/rule_rm.go` | `rm`, `unlink`, `rmdir`, `shred`. |
 | `src/rule_supabase.go` | Supabase CLI + ORM migrations. |
-| `src/rule_infra.go` | kubectl, gcloud, helm, docker, mongo*, terraform/tofu, gsutil, git push -f, curl-vs-OpenSearch. |
+| `src/rule_infra.go` | kubectl, gcloud, helm, docker, mongo*, terraform/tofu, gsutil, git push -f; aws/az/oci/ibmcloud destructive verbs; curl against OpenSearch/Elasticsearch + cloud control-plane APIs + GraphQL mutations. |
+| `src/rule_paas.go` | PaaS CLIs: railway, fly/flyctl, heroku, vercel, doctl, netlify, linode-cli. |
+| `src/rule_db.go` | DB clients: psql, mysql, mariadb, redis-cli — destructive SQL + redis verbs. |
 | `src/decision.go` | `Level` enum (Allow / Ask only — no Deny), aggregation: ask wins. |
 | `src/audit.go` | JSONL log at `~/.claude/logs/bash-guard.jsonl` with size-based rotation, 0o600 perms. |
 | `src/config.go` | TOML loader, trusted-projects allowlist. |
-| `testdata/fixtures/*.json` | Golden-table fixtures: `(decision, rule, reason_code)` tuples. ~87 cases. |
+| `testdata/fixtures/*.json` | Golden-table fixtures: `(decision, rule, reason_code)` tuples. ~120 cases. |
 | `DESIGN.md` | Full architecture, consilium review, asymmetric fail-open rationale, open questions. |
 
 For non-trivial changes, read `DESIGN.md` first. For day-to-day maintenance, [`src/CLAUDE.md`](src/CLAUDE.md) has the edit/rebuild loop, fixture protocol, and "what NOT to do" list.

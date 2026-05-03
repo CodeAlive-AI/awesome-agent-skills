@@ -107,10 +107,58 @@ func decisionFor(in FixtureInput) Decision {
 	if cmd == "" {
 		return Decision{Level: LevelAllow, Rule: "default", ReasonCode: "no_rule_matched"}
 	}
-	reg := newRegistry(RmRule{}, SupabaseRule{}, InfraRule{})
+	reg := newRegistry(RmRule{}, SupabaseRule{}, InfraRule{}, PaasRule{}, DbClientRule{})
 	triggers := reg.triggerSet()
 	sp := NewSafePaths(in.Cwd, nil)
 	return evaluate(cmd, triggers, reg, &RuleEnv{HookCwd: in.Cwd, SafePaths: sp})
+}
+
+// BenchmarkEvaluate measures hot-path latency for the orchestrator. Two
+// representative inputs:
+//   - "no trigger" path: a typical innocuous command. Quick-reject should
+//     short-circuit before any AST parse, so this is the high-volume case.
+//   - "trigger + ask" path: a command that hits a destructive rule, exercising
+//     parser, unwrap, rule eval, and aggregation.
+func BenchmarkEvaluate(b *testing.B) {
+	reg := newRegistry(RmRule{}, SupabaseRule{}, InfraRule{}, PaasRule{}, DbClientRule{})
+	triggers := reg.triggerSet()
+	env := &RuleEnv{HookCwd: "/Users/test/myproject", SafePaths: NewSafePaths("/Users/test/myproject", nil)}
+
+	b.Run("no_trigger", func(b *testing.B) {
+		cmd := "echo hello && pwd && ls -la /tmp | head -5"
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = evaluate(cmd, triggers, reg, env)
+		}
+	})
+
+	b.Run("trigger_rm_catastrophic", func(b *testing.B) {
+		cmd := "rm -rf /etc/nginx"
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = evaluate(cmd, triggers, reg, env)
+		}
+	})
+
+	b.Run("trigger_curl_railway_graphql", func(b *testing.B) {
+		cmd := `curl -X POST https://backboard.railway.com/graphql/v2 -H "Authorization: Bearer x" -d '{"query":"mutation { volumeDelete(id: 1) }"}'`
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = evaluate(cmd, triggers, reg, env)
+		}
+	})
+
+	b.Run("trigger_aws_delete", func(b *testing.B) {
+		cmd := "aws ec2 delete-volume --volume-id vol-12345"
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = evaluate(cmd, triggers, reg, env)
+		}
+	})
 }
 
 // TestPlatformSkipMacOSOnly skips fixtures marked darwin-only when not on darwin.

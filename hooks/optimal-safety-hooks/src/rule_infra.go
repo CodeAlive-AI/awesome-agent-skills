@@ -26,7 +26,28 @@ func (InfraRule) Triggers() []string {
 		"gsutil",
 		"git",
 		"curl",
+		// Hyperscaler CLIs (PocketOS-class coverage)
+		"aws", "az", "oci", "ibmcloud",
 	}
+}
+
+// Cloud control-plane API hostnames. Mutating HTTP verbs (POST/PUT/PATCH/
+// DELETE) targeting these escalate to ask. Matches as substring (case-
+// insensitive) so subdomains like `compute.googleapis.com` or
+// `ec2.us-east-1.amazonaws.com` are covered without enumerating each one.
+var cloudControlPlaneHosts = []string{
+	"backboard.railway.com",  // Railway GraphQL
+	"api.fly.io",
+	"api.heroku.com",
+	"api.vercel.com",
+	"api.netlify.com",
+	"api.digitalocean.com",
+	"api.linode.com",
+	"googleapis.com",      // covers compute.googleapis.com, iam.googleapis.com, …
+	"amazonaws.com",       // covers ec2.*.amazonaws.com, iam.amazonaws.com, …
+	"management.azure.com",
+	"oraclecloud.com",
+	"cloud.ibm.com",
 }
 
 var (
@@ -156,16 +177,90 @@ func (r InfraRule) Check(cmd ExecutedCommand, _ *RuleEnv) *Decision {
 			}
 		}
 	case "curl":
-		// Mutating OpenSearch / Elasticsearch requests.
 		method := curlMethod(cmd.Args)
-		if method == "POST" || method == "PUT" || method == "DELETE" {
-			joined := strings.ToLower(argv(cmd))
-			if strings.Contains(joined, "opensearch") ||
-				strings.Contains(joined, "elasticsearch") ||
-				strings.Contains(joined, ":9200") ||
-				strings.Contains(joined, ":9300") {
-				return mkAsk(r.Name(), "infra.opensearch_mutation",
-					"Mutating "+method+" request to OpenSearch/Elasticsearch", argv(cmd))
+		if method != "POST" && method != "PUT" && method != "DELETE" && method != "PATCH" {
+			return nil
+		}
+		joined := strings.ToLower(argv(cmd))
+		// Mutating OpenSearch / Elasticsearch requests (existing).
+		if strings.Contains(joined, "opensearch") ||
+			strings.Contains(joined, "elasticsearch") ||
+			strings.Contains(joined, ":9200") ||
+			strings.Contains(joined, ":9300") {
+			return mkAsk(r.Name(), "infra.opensearch_mutation",
+				"Mutating "+method+" request to OpenSearch/Elasticsearch", argv(cmd))
+		}
+		// Cloud control-plane API endpoints (PocketOS-class coverage).
+		for _, h := range cloudControlPlaneHosts {
+			if strings.Contains(joined, h) {
+				return mkAsk(r.Name(), "infra.cloud_api_mutation",
+					"Mutating "+method+" request to cloud control-plane API ("+h+")", argv(cmd))
+			}
+		}
+		// GraphQL mutation in body — catches custom GraphQL endpoints not in
+		// the hostname list. Word-boundary check on "mutation" to avoid
+		// matching the literal "mutation" appearing in field names.
+		if strings.Contains(joined, "graphql") &&
+			(strings.Contains(joined, " mutation ") ||
+				strings.Contains(joined, "\"mutation") ||
+				strings.Contains(joined, "{mutation") ||
+				strings.Contains(joined, "{ mutation")) {
+			return mkAsk(r.Name(), "infra.graphql_mutation",
+				"Mutating GraphQL request (mutation in body)", argv(cmd))
+		}
+	case "aws":
+		// AWS CLI: verbs starting with delete-/terminate-/destroy-/purge-/
+		// remove-/deregister-/revoke- mutate AWS resources.
+		for _, a := range cmd.Args {
+			if a == "" || strings.HasPrefix(a, "-") {
+				continue
+			}
+			if strings.HasPrefix(a, "delete-") ||
+				strings.HasPrefix(a, "terminate-") ||
+				strings.HasPrefix(a, "destroy-") ||
+				strings.HasPrefix(a, "purge-") ||
+				strings.HasPrefix(a, "remove-") ||
+				strings.HasPrefix(a, "deregister-") ||
+				strings.HasPrefix(a, "revoke-") {
+				return mkAsk(r.Name(), "infra.aws_destructive",
+					"Destructive aws command: "+a, argv(cmd))
+			}
+		}
+		// `aws s3 rm s3://bucket/...` (without --recursive a single object;
+		// with --recursive, a tree). Either is a deletion.
+		if seq(cmd.Args, "s3", "rm") {
+			return mkAsk(r.Name(), "infra.aws_s3_rm",
+				"aws s3 rm — removes S3 objects", argv(cmd))
+		}
+	case "az":
+		// Azure CLI: `delete` / `purge` as a verb anywhere in argv. Azure
+		// uses noun-verb structure (`az group delete`, `az vm delete`,
+		// `az storage account delete`).
+		for _, a := range cmd.Args {
+			if a == "delete" || a == "purge" {
+				return mkAsk(r.Name(), "infra.azure_destructive",
+					"Destructive az command: contains "+a, argv(cmd))
+			}
+		}
+	case "oci":
+		// Oracle Cloud CLI: `delete` / `terminate` as the action verb.
+		for _, a := range cmd.Args {
+			if a == "delete" || a == "terminate" {
+				return mkAsk(r.Name(), "infra.oci_destructive",
+					"Destructive oci command: contains "+a, argv(cmd))
+			}
+		}
+	case "ibmcloud":
+		// IBM Cloud CLI: `delete` verb plus hyphenated *-delete/*-rm forms
+		// (`is volume-delete`, `cs cluster-rm`, `ks cluster-rm`).
+		for _, a := range cmd.Args {
+			if a == "delete" || a == "destroy" {
+				return mkAsk(r.Name(), "infra.ibmcloud_destructive",
+					"Destructive ibmcloud command: contains "+a, argv(cmd))
+			}
+			if strings.HasSuffix(a, "-delete") || strings.HasSuffix(a, "-rm") || strings.HasSuffix(a, "-destroy") {
+				return mkAsk(r.Name(), "infra.ibmcloud_destructive",
+					"Destructive ibmcloud command: "+a, argv(cmd))
 			}
 		}
 	}

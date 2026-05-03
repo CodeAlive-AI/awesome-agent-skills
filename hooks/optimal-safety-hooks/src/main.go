@@ -99,7 +99,7 @@ func main() {
 	}
 
 	// --- registry ---
-	reg := newRegistry(RmRule{}, SupabaseRule{}, InfraRule{})
+	reg := newRegistry(RmRule{}, SupabaseRule{}, InfraRule{}, PaasRule{}, DbClientRule{})
 	triggers := reg.triggerSet()
 
 	// --- safe paths ---
