@@ -22,7 +22,21 @@ Standalone agent-safety hooks that don't fit the skills standard — typically b
 
 | Hook | Description | Install |
 |------|-------------|---------|
-| [optimal-safety-hooks](hooks/optimal-safety-hooks/) | `bash-guard` — a Claude Code `PreToolUse:Bash` safety hook in Go. Real Bash AST parsing via [`mvdan.cc/sh`](https://github.com/mvdan/sh) to minimise false positives (heredocs, single-quoted prose, executor wrappers like `sudo`/`env`/`xargs`/`find -delete`/`bash -c`/`eval`/`ssh`/pipe-to-shell). Catastrophic-path matrix with safe-path carve-outs. **Only emits `ask`, never `deny`** — agents trivially bypass `deny` by rephrasing. Covers `rm`/`unlink`/`rmdir`/`shred`, ORM migrations (Supabase + 9 others), and infra (kubectl/gcloud/helm/docker/mongo/terraform/`git push -f`/curl-vs-OpenSearch) | `cd hooks/optimal-safety-hooks && ./install.sh --shadow` |
+| [optimal-safety-hooks](hooks/optimal-safety-hooks/) | `bash-guard` — Claude Code `PreToolUse:Bash` safety hook in Go. AST-based parsing (heredocs, quotes, `sudo`/`env`/`xargs`/`bash -c`/`eval`/`ssh`/pipe-to-shell), catastrophic-path matrix with carve-outs. Default rule set uses `ask` (not `deny`) so agents don't paper over the block. Covers `rm`/`unlink`/`shred`, ORM migrations, infra (kubectl/gcloud/helm/docker/terraform/`git push -f`), PaaS CLIs (railway/fly/heroku/…), DB clients (psql/redis-cli), and cloud control-plane API mutations | `curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/awesome-agent-skills/main/hooks/optimal-safety-hooks/install-prebuilt.sh \| sh` |
+
+### bash-guard
+
+A safety hook that intercepts every Bash command Claude Code is about to run, parses it with a real shell AST ([`mvdan.cc/sh`](https://github.com/mvdan/sh)), and asks for human confirmation only on the genuinely destructive ones (`rm` outside cwd, `kubectl delete`, `terraform destroy`, `psql -c "DROP DATABASE"`, `curl -X POST` to a Railway `volumeDelete` mutation, …). Designed for low false-positive rate so you actually read the prompts instead of mashing Allow.
+
+**Install (no Go required):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/awesome-agent-skills/main/hooks/optimal-safety-hooks/install-prebuilt.sh | sh
+```
+
+Detects OS/arch (darwin / linux × arm64 / amd64), downloads the prebuilt binary from the latest GitHub release, verifies its SHA-256, and patches `~/.claude/settings.json`.
+
+Full docs, design rationale, and the full rule list: **[hooks/optimal-safety-hooks/README.md](hooks/optimal-safety-hooks/)**.
 
 ## Contributing
 

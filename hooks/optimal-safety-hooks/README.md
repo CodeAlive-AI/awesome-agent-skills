@@ -1,6 +1,21 @@
 # bash-guard — a Claude Code PreToolUse:Bash safety hook
 
-A small Go program that sits between Claude Code and your shell, parses every Bash command the agent is about to run with a real shell AST, and decides whether to **allow** it or **ask** you. Never `deny` — see [why](#why-ask-never-deny).
+A small Go program that sits between Claude Code and your shell, parses every Bash command the agent is about to run with a real shell AST, and decides whether to **allow** it or **ask** you. The default rule set uses `ask` rather than `deny` — see [why](#why-we-default-to-ask).
+
+## Why this exists
+
+Anyone who has spent a few days with coding agents has watched one go off the rails — deleting the wrong folder, nuking docker images, or dropping a production database along with the surrounding infra (see [what a Cursor agent on Claude Opus 4.6 did to PocketOS](https://neuraltrust.ai/blog/pocketos-railway-agent) — one POST to Railway's `volumeDelete` mutation, the whole prod gone). Hooks are the most important guardrail you can put in front of a coding agent: they bring both determinism and safety to an otherwise non-deterministic loop.
+
+The trick is balance:
+
+- **Too few hooks** and the agent eventually wipes something that mattered.
+- **Too many hooks** and you train yourself to mash Enter on every Allow prompt without reading. Banner blindness sets in within a day, and the hook layer becomes worse than nothing — it's permission-laundering with extra steps.
+
+The right move is to gate **only** the truly destructive, irreversible, or critical actions. Everything else should pass silently. bash-guard is the opinionated set of hooks I use myself for that gate. It's based on [claude-code-safety-net](https://github.com/kenryu42/claude-code-safety-net) (h/t [@kenryu42](https://github.com/kenryu42)), substantially reworked and extended — AST-based parsing instead of regex, span classification, safe-paths matrix, PocketOS-class API coverage, and an `ask`-by-default decision model.
+
+It's written in Go, so it runs in single-digit milliseconds per command and is easy to fork: edit a rule, `make build`, done.
+
+## False positives it fixes
 
 It replaces shlex/regex-based hooks that produced two classes of false positives in production:
 
@@ -70,11 +85,11 @@ What it explicitly does **not** trigger on:
 - `--dry-run` variants of destructive verbs (current behaviour: still asks; see open question in `DESIGN.md`)
 - commands inside heredoc bodies, single-quoted strings, or comments
 
-## Why ask, never deny
+## Why we default to ask
 
-Claude Code's hook protocol supports three decisions: `allow`, `ask`, `deny`. bash-guard only ever emits the first two — and the `Level` enum in [`src/decision.go`](src/decision.go) enforces this at compile time.
+Claude Code's hook protocol supports three decisions: `allow`, `ask`, `deny`. The default rule set ships with `allow` and `ask` — `deny` is intentionally not used out of the box.
 
-**Reasoning.** A `deny` decision is a hard wall the agent immediately tries to climb over. In practice:
+**Reasoning.** A `deny` decision is a hard wall the agent immediately tries to climb over. Modern agents are good enough to find a path around any primitive hook — and that capability is amplified when a prompt-injection has primed them with adversarial intent. Hooks are usually shallow string-matchers; agents are not. In practice:
 
 - The agent rephrases the command (`rm -rf` → `find … -delete`).
 - It splits the command (`rm dir/* && rmdir dir`).
@@ -83,19 +98,37 @@ Claude Code's hook protocol supports three decisions: `allow`, `ask`, `deny`. ba
 
 `deny` is hostile to the agent's planner without informing the human. `ask` keeps the human in the loop — which is the only durable defence — and gives the agent a clear signal that the destructive intent was recognised. Empirically (and per the consilium review of the design), `ask` reduces both false-negative escapes ("agent worked around the block") and operator fatigue ("why does this keep silently failing?").
 
-This is non-negotiable in this project. Don't add a `LevelDeny` constant.
+If your environment requires hard blocks for specific commands (e.g. compliance constraints, shared infra), nothing in the design prevents you from forking and extending the `Level` enum with a `LevelDeny` tier and emitting it from your own rules. Just be aware of the workaround behaviour above and pair `deny` with platform-side guardrails (scoped tokens, server-side gates) so it isn't your only line of defence.
 
 ## Install
 
-Requires Go ≥ 1.21 and `jq` (for safe `settings.json` editing).
+### Quick install (no Go required)
+
+Downloads the prebuilt binary for your OS/arch (darwin / linux × arm64 / amd64) from the latest GitHub release, verifies the SHA-256 checksum, and patches `~/.claude/settings.json`. Requires `curl` and `jq`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/awesome-agent-skills/main/hooks/optimal-safety-hooks/install-prebuilt.sh | sh
+```
+
+To install in `--shadow` mode (or `--dry-run`, `--uninstall`), forward args through the pipe:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/awesome-agent-skills/main/hooks/optimal-safety-hooks/install-prebuilt.sh | sh -s -- --shadow
+```
+
+To pin a specific release, set `BASH_GUARD_VERSION=bash-guard-vX.Y.Z` in the environment before running.
+
+### Build from source
+
+Requires Go ≥ 1.21 and `jq`.
 
 ```bash
 git clone https://github.com/CodeAlive-AI/awesome-agent-skills.git
 cd awesome-agent-skills/hooks/optimal-safety-hooks
 
-./install.sh --shadow     # logs every decision, never blocks. Recommended for first install.
+./install.sh --live       # real enforcement — emits ask for risky commands (the normal mode)
+./install.sh --shadow     # observe-only: logs every decision, never prompts. For tuning safe paths before going live.
 ./install.sh --dry-run    # same effect as --shadow, with a distinct log label
-./install.sh --live       # real enforcement — emits ask for risky commands
 ./install.sh --uninstall  # remove hook entry + symlink
 ```
 
@@ -108,11 +141,13 @@ What `install.sh` does, idempotently:
 
 Switching modes later is the same command — `settings.json` is re-read on every hook fire, so no Claude Code restart is needed.
 
-## Recommended workflow
+## Tuning
 
-1. **`--shadow` for a week.** Watch `~/.claude/logs/bash-guard.jsonl` (`tail -f … | jq '.'`) and inspect what it *would have* asked about. Each entry has `would_decide`, `rule`, `reason_code`, `command_hash` (set `BASH_GUARD_LOG_COMMANDS=1` to log raw commands; off by default).
-2. **Tune safe paths.** If you see ask decisions on legitimate work in your project, add the project root to `~/.claude/hooks/bash-guard/trusted-projects.toml` (see template in repo) and put project-specific safe paths in `<repo>/.claude/bash-guard.toml`.
-3. **Switch to `--live`.** Once the noise floor is acceptable.
+Going straight to `--live` is fine — the worst case is a few extra ask prompts, which you click Allow on. Most users should just install live and tune as friction shows up.
+
+If you'd rather observe before any prompts hit your workflow, `--shadow` logs every would-be decision without prompting. Tail `~/.claude/logs/bash-guard.jsonl` (`tail -f … | jq '.'`); each entry has `would_decide`, `rule`, `reason_code`, `command_hash` (set `BASH_GUARD_LOG_COMMANDS=1` to log raw commands; off by default).
+
+When you see asks on legitimate work, add the project root to `~/.claude/hooks/bash-guard/trusted-projects.toml` and put project-specific safe paths in `<repo>/.claude/bash-guard.toml`. Switching modes is just rerunning `install.sh` — `settings.json` is re-read on every hook fire.
 
 ## Architecture
 
