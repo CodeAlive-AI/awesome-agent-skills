@@ -23,7 +23,7 @@
 
 | Old path | New location |
 |---|---|
-| `hooks/optimal-safety-hooks/` (`bash-guard`) | [`ai-driven-development/hooks/optimal-safety-hooks`](https://github.com/CodeAlive-AI/ai-driven-development/tree/main/hooks/optimal-safety-hooks) |
+| `hooks/optimal-safety-hooks/` (`bash-guard`) | [`ai-driven-development/hooks/balanced-safety-hooks`](https://github.com/CodeAlive-AI/ai-driven-development/tree/main/hooks/balanced-safety-hooks) |
 
 ---
 
@@ -42,7 +42,7 @@ npx skills add CodeAlive-AI/ai-driven-development --skill agents-consilium
 **Bash safety hook (`bash-guard`):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/ai-driven-development/main/hooks/optimal-safety-hooks/install-prebuilt.sh | sh
+curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/ai-driven-development/main/hooks/balanced-safety-hooks/install-prebuilt.sh | sh
 ```
 
 **Claude Code plugin install:**
