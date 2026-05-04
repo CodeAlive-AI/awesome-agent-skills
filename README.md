@@ -1,48 +1,76 @@
-# awesome-agent-skills
+# ⚠️ awesome-agent-skills — ARCHIVED — moved to [CodeAlive-AI/ai-driven-development](https://github.com/CodeAlive-AI/ai-driven-development)
 
-A curated collection of useful, general-purpose skills for AI coding agents. Many of these we actively use ourselves at [CodeAlive](https://codealive.ai) in our daily work.
+> [!IMPORTANT]
+> **This repository has been consolidated into [CodeAlive-AI/ai-driven-development](https://github.com/CodeAlive-AI/ai-driven-development) and is now archived (read-only).**
+>
+> All 5 skills and the `bash-guard` Bash safety hook now live in the new umbrella collection at https://github.com/CodeAlive-AI/ai-driven-development.
 
-These skills are **not tied to CodeAlive** — they work with any agent that supports the [skills](https://skills.sh) standard: Claude Code, Cursor, Codex, Gemini CLI, and [40+ others](https://skills.sh).
+---
 
-> Looking for CodeAlive-specific skills (semantic code search, codebase Q&A)? Those live in a separate repo: **[CodeAlive-AI/codealive-skills](https://github.com/CodeAlive-AI/codealive-skills)**.
+## Where the content moved
 
-## Skills
+### Skills
 
-| Skill | Description | Install |
-|-------|-------------|---------|
-| [agents-consilium](skills/agents-consilium/) | Multi-agent orchestration — query Codex, Claude Code, OpenCode, Gemini in parallel. Different models bring **different angles**: more original ideas in brainstorming & feature design, and broader coverage in code review (each model spots a different scope of issues) | `npx skills add CodeAlive-AI/awesome-agent-skills@agents-consilium -g -y` |
-| [ubiquitous-language](skills/ubiquitous-language/) | Domain thesaurus manager — DDD naming consistency, thesaurus generation, naming audit | `npx skills add CodeAlive-AI/awesome-agent-skills@ubiquitous-language -g -y` |
-| [semantic-scholar-deep](skills/semantic-scholar-deep/) | Deep research over the Semantic Scholar Graph API — backward references, recommendations, batch lookup (up to 500 IDs), multi-hop citation-graph BFS, snippet search. Ships with an optional paired subagent for token-isolated literature reviews | `npx skills add CodeAlive-AI/awesome-agent-skills@semantic-scholar-deep -g -y` |
-| [fetch-url-as-markdown](skills/fetch-url-as-markdown/) | URL → clean Markdown via local trafilatura (real-browser UA, anti-stub guards, structured exit codes), with Exa MCP as a fallback for JS-rendered or anti-bot pages. Drop-in replacement for the built-in WebFetch | `npx skills add CodeAlive-AI/awesome-agent-skills@fetch-url-as-markdown -g -y` |
-| [maintaining-macos-health](skills/maintaining-macos-health/) | macOS disk cleanup + dev-machine optimization + proactive health alerting. Triage flow for kernel panic / watchdog timeout / `vm-compressor-space-shortage` / Jetsam events. Tiered cleanup playbook (zero-risk → discuss-first), Mole-style safety guards, and a noise-resistant LaunchAgent alerter (3 CRITICAL-only triggers, hysteresis, calibration window). Apple Silicon Mac focus | `npx skills add CodeAlive-AI/awesome-agent-skills@maintaining-macos-health -g -y` |
+| Old path | New location |
+|---|---|
+| `skills/agents-consilium/` | [`ai-driven-development/skills/agents-consilium`](https://github.com/CodeAlive-AI/ai-driven-development/tree/main/skills/agents-consilium) |
+| `skills/ubiquitous-language/` | [`ai-driven-development/skills/ubiquitous-language`](https://github.com/CodeAlive-AI/ai-driven-development/tree/main/skills/ubiquitous-language) |
+| `skills/fetch-url-as-markdown/` | [`ai-driven-development/skills/fetch-url-as-markdown`](https://github.com/CodeAlive-AI/ai-driven-development/tree/main/skills/fetch-url-as-markdown) |
+| `skills/semantic-scholar-deep/` | [`ai-driven-development/skills/semantic-scholar-deep`](https://github.com/CodeAlive-AI/ai-driven-development/tree/main/skills/semantic-scholar-deep) |
+| `skills/maintaining-macos-health/` | [`ai-driven-development/skills/maintaining-macos-health`](https://github.com/CodeAlive-AI/ai-driven-development/tree/main/skills/maintaining-macos-health) |
 
-## Hooks
+### Hooks
 
-Standalone agent-safety hooks that don't fit the skills standard — typically because they have to live inside Claude Code's hook protocol or run as compiled binaries.
+| Old path | New location |
+|---|---|
+| `hooks/optimal-safety-hooks/` (`bash-guard`) | [`ai-driven-development/hooks/optimal-safety-hooks`](https://github.com/CodeAlive-AI/ai-driven-development/tree/main/hooks/optimal-safety-hooks) |
 
-| Hook | Description | Install |
-|------|-------------|---------|
-| [optimal-safety-hooks](hooks/optimal-safety-hooks/) | `bash-guard` — Claude Code `PreToolUse:Bash` safety hook in Go. AST-based parsing (heredocs, quotes, `sudo`/`env`/`xargs`/`bash -c`/`eval`/`ssh`/pipe-to-shell), catastrophic-path matrix with carve-outs. Default rule set uses `ask` (not `deny`) so agents don't paper over the block. Covers `rm`/`unlink`/`shred`, ORM migrations, infra (kubectl/gcloud/helm/docker/terraform/`git push -f`), PaaS CLIs (railway/fly/heroku/…), DB clients (psql/redis-cli), and cloud control-plane API mutations | `curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/awesome-agent-skills/main/hooks/optimal-safety-hooks/install-prebuilt.sh \| sh` |
+---
 
-### bash-guard
+## Install (new location)
 
-A safety hook that intercepts every Bash command Claude Code is about to run, parses it with a real shell AST ([`mvdan.cc/sh`](https://github.com/mvdan/sh)), and asks for human confirmation only on the genuinely destructive ones (`rm` outside cwd, `kubectl delete`, `terraform destroy`, `psql -c "DROP DATABASE"`, `curl -X POST` to a Railway `volumeDelete` mutation, …). Designed for low false-positive rate so you actually read the prompts instead of mashing Allow.
-
-**Install (no Go required):**
+**Skills:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/awesome-agent-skills/main/hooks/optimal-safety-hooks/install-prebuilt.sh | sh
+# All 5 of the previously-here skills (plus 13 more in the umbrella collection)
+npx skills add CodeAlive-AI/ai-driven-development
+
+# Or pick one
+npx skills add CodeAlive-AI/ai-driven-development --skill agents-consilium
 ```
 
-Detects OS/arch (darwin / linux × arm64 / amd64), downloads the prebuilt binary from the latest GitHub release, verifies its SHA-256, and patches `~/.claude/settings.json`.
+**Bash safety hook (`bash-guard`):**
 
-Full docs, design rationale, and the full rule list: **[hooks/optimal-safety-hooks/README.md](hooks/optimal-safety-hooks/)**.
+```bash
+curl -fsSL https://raw.githubusercontent.com/CodeAlive-AI/ai-driven-development/main/hooks/optimal-safety-hooks/install-prebuilt.sh | sh
+```
 
-## Contributing
+**Claude Code plugin install:**
 
-Each skill lives in `skills/<skill-name>/` with a `SKILL.md` at the root. See any existing skill for the structure.
+```bash
+/plugin marketplace add CodeAlive-AI/ai-driven-development
+/plugin install ai-driven-development@ai-driven-development
+```
 
-Each hook lives in `hooks/<hook-name>/` with its own `README.md` and install script.
+---
+
+## What about the existing `bash-guard-v0.1.0` release?
+
+The original [`bash-guard-v0.1.0`](https://github.com/CodeAlive-AI/awesome-agent-skills/releases/tag/bash-guard-v0.1.0) release in this repo remains accessible — its binaries are unchanged and continue to work for users who already pinned to it. New installs should use the [republished release](https://github.com/CodeAlive-AI/ai-driven-development/releases/tag/bash-guard-v0.1.0) under `ai-driven-development`, which is what `install-prebuilt.sh` now points to.
+
+---
+
+## Why?
+
+We consolidated 8 separate skill/protocol repos into a single umbrella collection that follows the [Agent Skills](https://agentskills.io) open standard, so skills work seamlessly across Claude Code, Codex CLI, OpenCode, Cursor, Gemini CLI, Antigravity, and any agent supporting `npx skills add`. See [the new repo's README](https://github.com/CodeAlive-AI/ai-driven-development#readme) for the full collection (18 skills + 1 hook).
+
+---
+
+## Archive notice
+
+This repo is **archived and read-only**. Issues, PRs, and discussions should be filed against [`CodeAlive-AI/ai-driven-development`](https://github.com/CodeAlive-AI/ai-driven-development).
+
+The original source files remain in this archive for git history reference.
 
 ## License
 
